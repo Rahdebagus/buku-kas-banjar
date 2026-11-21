@@ -265,6 +265,7 @@ document.addEventListener('click',e=>{
  if('print' in d)window.print();
  if('logout' in d)$('#logout').requestSubmit();
  if('reload' in d)load();
+ if('sync' in d)refresh(true);
  if(b.id==='close')$('dialog').close();
 });
 document.addEventListener('change',e=>{
@@ -290,20 +291,56 @@ $('dialog form').addEventListener('submit',async e=>{
  try{
   const res=await fetch('/api/kas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)}),r=await res.json();
   if(!res.ok){if(res.status===401||res.status===403||res.status===409)await load();throw Error(r.error||'Gagal menyimpan.')}
-  ({state,rev,role}=r);render();$('dialog').close();toast('Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase()));
+  gen++;({state,rev,role}=r);render();setLive(true);$('dialog').close();toast('Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase()));
  }catch(err){$('.error').textContent=err.message}
  finally{$('#save').disabled=false}
 });
 
-async function load(){
+// ---------- Sinkronisasi otomatis ----------
+// Data diambil ulang berkala selama tab terlihat. Saat formulir terbuka, pembaruan ditunda
+// agar isian tidak tertimpa; server tetap menolak simpanan dengan revisi lama.
+const POLL_MS=20000;
+let gen=0,syncing=false,pollTimer=null;
+function setLive(ok){
+ const el=$('#sync');if(!el)return;
+ const time=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+ el.className='sync '+(ok?'ok':'off');
+ el.textContent=ok?'Data langsung · diperbarui '+time:'Koneksi terputus · mencoba lagi';
+}
+async function refresh(force){
+ if(!state||syncing||(!force&&(document.hidden||$('dialog').open)))return;
+ syncing=true;const g=gen;
  try{
-  const res=await fetch('/api/kas'),r=await res.json().catch(()=>({}));
+  const res=await fetch('/api/kas',{cache:'no-store'}),r=await res.json().catch(()=>({}));
+  if(g!==gen)return;
+  if(res.status===401||res.status===403)return load();
+  if(!res.ok)throw Error(r.error);
+  if(r.rev!==rev||r.role!==role){
+   if($('dialog').open)return; // tunggu formulir ditutup
+   ({state,rev,role}=r);gen++;render();toast('Data terbaru dimuat');
+  }
+  setLive(true);
+ }catch{setLive(false)}
+ finally{syncing=false}
+}
+function startPolling(){
+ if(pollTimer)return;
+ pollTimer=setInterval(refresh,POLL_MS);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
+ window.addEventListener('focus',()=>refresh());
+ $('dialog').addEventListener('close',()=>refresh());
+}
+
+async function load(){
+ gen++;
+ try{
+  const res=await fetch('/api/kas',{cache:'no-store'}),r=await res.json().catch(()=>({}));
   if(res.status===401)return showGate('login','Masuk dengan akun Google yang telah didaftarkan oleh pimpinan. Setiap divisi hanya melihat kasnya sendiri.');
   if(res.status===403){$('#logout').hidden=false;return showGate('denied',r.error||'Email Anda belum terdaftar. Hubungi pimpinan.')}
   if(!res.ok)throw Error(r.error);
   ({state,rev,role}=r);$('#logout').hidden=false;
   if(!isAdmin())acc=myDiv();
-  render();
+  render();setLive(true);startPolling();
  }catch(err){showGate('error',err.message||'Gagal memuat data kas.')}
 }
 load();

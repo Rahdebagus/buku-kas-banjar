@@ -166,6 +166,17 @@ select.compact{width:auto;padding:8px 10px;font-size:13.5px}
 .error{color:var(--cr);font-size:14px;min-height:20px;margin-top:12px}
 .dfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}
 
+/* Live sync indicator */
+.sync{border:0;background:none;padding:0;margin-top:10px;font:500 12.5px var(--sans);color:var(--muted);gap:8px;cursor:pointer}
+.sync:hover{color:var(--ink)}
+.sync:empty{display:none}
+.sync:before{content:"";width:8px;height:8px;border-radius:50%;background:#b9b2a0;flex:none}
+.sync.ok:before{background:#2fae7a;animation:pulse 2.4s infinite}
+.sync.off{color:#a5621c}
+.sync.off:before{background:#d08a2e}
+@keyframes pulse{0%{box-shadow:0 0 0 0 #2fae7a73}70%{box-shadow:0 0 0 7px #2fae7a00}100%{box-shadow:0 0 0 0 #2fae7a00}}
+@media(prefers-reduced-motion:reduce){.sync.ok:before{animation:none}}
+
 /* Toast */
 #toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);opacity:0;background:var(--emerald);color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;box-shadow:var(--shadow);transition:.25s;pointer-events:none;z-index:20;max-width:calc(100vw - 32px)}
 #toast.show{opacity:1;transform:translate(-50%,0)}
@@ -188,7 +199,7 @@ select.compact{width:auto;padding:8px 10px;font-size:13.5px}
  table{font-size:13px}
 }
 @media print{
- header.top,.heading .actions,.tools,#toast,dialog{display:none!important}
+ header.top,.heading .actions,.tools,#toast,dialog,.sync{display:none!important}
  body{background:#fff}
  main{padding:0;max-width:none}
  .panel,.card{box-shadow:none;border-color:#bbb;break-inside:avoid}
@@ -210,7 +221,7 @@ select.compact{width:auto;padding:8px 10px;font-size:13.5px}
  <section id="gate" class="gate"><div class="gatecard"><div class="seal">K</div><span class="eyebrow">Buku Kas Banjar</span><h1>Memuat data kas…</h1></div></section>
  <div id="shell" hidden>
   <div class="heading">
-   <div><span class="eyebrow" id="eyebrow"></span><h1 id="title"></h1></div>
+   <div><span class="eyebrow" id="eyebrow"></span><h1 id="title"></h1><button type="button" id="sync" class="sync" data-sync title="Klik untuk memuat ulang data sekarang"></button></div>
    <div class="actions" id="quick"></div>
   </div>
   <div id="view"></div>
