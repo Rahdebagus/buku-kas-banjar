@@ -1,3 +1,230 @@
-<!doctype html><html lang="id"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Buku Kas Banjar</title><style>
-*{box-sizing:border-box}body{margin:0;background:#f4f6f4;color:#172e29;font:16px "DM Sans",system-ui,sans-serif}header{background:#123e35;color:white;padding:0 max(5vw,20px);display:flex;align-items:center;gap:48px;min-height:72px}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:20px}.mark{display:grid;place-items:center;width:35px;height:35px;background:#ddebaa;color:#143e35;border-radius:9px;font-size:23px}nav{display:flex;gap:4px}button{font:inherit;cursor:pointer;border:0;border-radius:8px;padding:11px 16px;font-weight:650;background:#e9eeeb;color:#20493f}nav button{background:transparent;color:#ccdad4;font-size:14px}nav .on{background:#2c544a;color:white}main{max-width:1330px;margin:auto;padding:40px 5vw}h1,h2,h3,p{margin:0}h1{font-size:clamp(30px,4vw,48px);letter-spacing:-.055em}h2{font-size:21px;letter-spacing:-.035em}small,.muted{color:#576b62}.heading,.panelhead,.line{display:flex;align-items:center;justify-content:space-between;gap:14px}.heading{margin-bottom:24px}.primary{background:#174d40;color:white}.cards{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:14px}.card,.panel{background:white;border:1px solid #d6dfd8;border-radius:15px;padding:24px}.card:first-child{background:#164c3e;color:white;position:relative;overflow:hidden}.card:first-child:after{content:'';position:absolute;width:105px;height:105px;border:1px solid #49715f;border-radius:50%;right:-50px;bottom:-50px;box-shadow:0 0 0 16px #ffffff07,0 0 0 32px #ffffff07}.card strong{display:block;font-size:clamp(22px,2.7vw,38px);letter-spacing:-.055em;margin:12px 0}.card span{font-size:14px}.card:first-child small{color:#d0e2d7}.split{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin:18px 0}.panelhead{margin-bottom:18px}.panelhead button{font-size:14px}.row{padding:13px 0;border-top:1px solid #e7ede7}.bar{height:8px;background:#edf1ec;border-radius:8px;margin-top:9px;overflow:hidden}.bar i{display:block;height:100%;background:#78a894}.bar.gold i{background:#dbb45e}.line span{font-size:14px}.panel{margin-bottom:16px}.split .panel{margin:0}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px;text-align:left}th,td{padding:14px 10px;border-bottom:1px solid #e4eae5}th{color:#637368;font-weight:550;background:#f5f7f3}td:last-child,th:last-child{text-align:right;white-space:nowrap}.pill{display:inline-block;background:#e8f2eb;border-radius:6px;padding:4px 9px;color:#355c46;font-size:13px}.expense{background:#faf0d9;color:#71541d}dialog{width:min(460px,94vw);border:0;border-radius:16px;color:inherit;padding:26px}dialog::backdrop{background:#102a2370}label{display:grid;gap:5px;margin:13px 0;font-size:14px;font-weight:600}input,select{font:inherit;color:inherit;border:1px solid #acbab0;padding:10px;border-radius:7px;background:white;width:100%}form .line{margin-top:18px}.error{color:#993a26}#status{margin-bottom:12px}.account{margin-left:auto;font-size:14px}.filter{width:auto;max-width:160px}.actions{display:flex;flex-wrap:wrap;gap:8px}@media(max-width:720px){header{flex-wrap:wrap;gap:10px;padding-block:14px}.account{display:none}main{padding:24px 14px}.cards,.split{grid-template-columns:1fr}.card,.panel{padding:16px}.card strong{margin:4px 0}.heading{align-items:flex-start;flex-wrap:wrap}nav button{padding:7px}.panelhead{flex-wrap:wrap}}
-</style><header><div class="brand"><span class="mark">▤</span>Buku Kas Banjar</div><nav></nav><span class="account">Kas pimpinan</span><form id="logout" hidden action="/api/auth?action=logout" method="post"><button>Keluar</button></form></header><main><div class="heading"><h1 id="title">Dashboard kas</h1><button id="add" class="primary" disabled>＋ Catat pengeluaran</button></div><div id="status" role="status">Memuat data kas…</div><a id="login" hidden href="/api/auth?action=login">Masuk dengan Google</a><div id="view"></div></main><dialog><form><h2 id="ft"></h2><div id="fields"></div><div class="error" role="alert"></div><div class="line"><button type="button" id="close">Batal</button><button class="primary" id="save">Simpan</button></div></form></dialog><script type="module" src="/app.js"></script></html>
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0d3b30">
+<title>Buku Kas Banjar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+ --bg:#f5f2ea;--paper:#fffdf8;--soft:#faf6ec;--ink:#13251f;--ink-2:#34463f;--muted:#6d7a72;
+ --line:#e7e0cf;--line-2:#efe9dc;
+ --emerald:#0d3b30;--emerald-2:#14513f;--emerald-3:#1d6a53;
+ --gold:#c6a15b;--gold-2:#e3c98f;--gold-soft:#f6ecd6;--gold-ink:#8a6a2c;
+ --dr:#17714f;--dr-soft:#e3f1e9;--cr:#b0442c;--cr-soft:#f8e6df;--tr:#4f5689;--tr-soft:#e9eaf5;
+ --shadow:0 1px 2px rgba(19,37,31,.04),0 10px 28px -14px rgba(19,37,31,.22);
+ --serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);font-variant-numeric:tabular-nums}
+p{margin:0}
+h1{font:600 clamp(30px,4vw,44px)/1.1 var(--serif);letter-spacing:-.02em;margin:6px 0 0}
+h2{font:600 19px/1.3 var(--serif);margin:0}
+h3{font:600 22px/1.2 var(--serif);margin:2px 0 0}
+
+/* Header */
+header.top{position:sticky;top:0;z-index:5;background:linear-gradient(120deg,#0a2e26,#0f4234 60%,#0d3a2f);color:#f3efe4;border-bottom:1px solid #c6a15b55}
+.bar-in{max-width:1280px;margin:auto;padding:0 24px;min-height:70px;display:flex;align-items:center;gap:28px}
+.brand{display:flex;align-items:center;gap:12px;font:600 20px var(--serif);white-space:nowrap}
+.seal{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:linear-gradient(145deg,#ecd7a3,#b88f45);color:#0d3b30;font:600 20px var(--serif);box-shadow:inset 0 1px 0 #fff6,0 4px 14px -4px #c6a15b99;flex:none}
+nav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+nav button{background:transparent;border-color:transparent;color:#c9d6cf;border-radius:999px;padding:8px 14px}
+nav button:hover{color:#fff;background:#ffffff12;border-color:transparent}
+nav button.on{background:#f3efe4;color:var(--emerald)}
+.who{margin-left:auto;display:flex;align-items:center;gap:14px}
+#chip{display:flex;align-items:center;gap:8px;font-size:13px;color:#dfe8e3;white-space:nowrap}
+#chip .role{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-2);border:1px solid #c6a15b77;padding:3px 9px;border-radius:999px;font-weight:700}
+#logout button{background:transparent;border-color:#ffffff38;color:#f3efe4}
+#logout button:hover{border-color:var(--gold-2)}
+
+/* Buttons */
+button,.btn{font:600 14px var(--sans);cursor:pointer;border:1px solid var(--line);border-radius:10px;padding:10px 16px;background:var(--paper);color:var(--emerald);text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background .15s,border-color .15s,color .15s;white-space:nowrap}
+button:hover,.btn:hover{border-color:var(--gold)}
+button:disabled{opacity:.6;cursor:wait}
+.primary{background:var(--emerald);border-color:var(--emerald);color:#fff}
+.primary:hover{background:var(--emerald-2);border-color:var(--emerald-2)}
+.gold{background:linear-gradient(145deg,#efdcad,#c9a35c);border-color:#c39c55;color:#1d2a20}
+.gold:hover{border-color:#9c7a3c}
+.ghost{background:transparent}
+.link{border:0;background:none;padding:4px 6px}
+.danger{color:var(--cr)}
+.big{padding:14px 24px;font-size:15px;border-radius:12px}
+
+/* Layout */
+main{max-width:1280px;margin:auto;padding:36px 24px 72px}
+.heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:26px}
+.eyebrow{display:block;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#9a7b3f;font-weight:700}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Cards */
+.cards{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:14px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px;min-width:0}
+.card .k{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-weight:600}
+.card strong{font:600 clamp(22px,2.3vw,29px)/1.2 var(--serif);margin-top:4px;overflow-wrap:anywhere}
+.card small{color:var(--muted);font-size:12.5px}
+.tag{font-size:10.5px;padding:2px 8px;border-radius:999px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.tag.dr{background:var(--dr-soft);color:var(--dr)}
+.tag.cr{background:var(--cr-soft);color:var(--cr)}
+.tag.gd{background:var(--gold-soft);color:var(--gold-ink)}
+.hero{position:relative;overflow:hidden;background:radial-gradient(120% 140% at 100% 0%,#1f6b54 0%,#0f4234 45%,#0a2c24 100%);border-color:#c6a15b66;color:#f6f1e4}
+.hero:before{content:"";position:absolute;right:-70px;top:-70px;width:230px;height:230px;border-radius:50%;border:1px solid #c6a15b55;box-shadow:0 0 0 24px #c6a15b0d,0 0 0 48px #c6a15b09}
+.hero .k{color:var(--gold-2)}
+.hero strong{font-size:clamp(28px,3.2vw,40px);color:#fff}
+.hero small{color:#cfdcd5}
+
+/* Panels */
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-top:16px;min-width:0}
+.panelhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.hint{font-size:12.5px;color:var(--muted)}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+.barrow{padding:11px 0;border-top:1px solid var(--line-2)}
+.barrow:first-child{border-top:0;padding-top:0}
+.line{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.bar{height:7px;background:#efe9dc;border-radius:99px;margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--emerald-3)}
+.bar.cr i{background:linear-gradient(90deg,#dc9a84,var(--cr))}
+.bar.dr i{background:linear-gradient(90deg,#7fbf9f,var(--dr))}
+.bar.gold i{background:linear-gradient(90deg,#e8d29f,#b88f45)}
+
+/* Tables */
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--soft);white-space:nowrap}
+td{padding:12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+.num{text-align:right;white-space:nowrap}
+td.dr{color:var(--dr);font-weight:600}
+td.cr{color:var(--cr);font-weight:600}
+.nowrap{white-space:nowrap}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.pill.Pemasukan{background:var(--dr-soft);color:var(--dr)}
+.pill.Pengeluaran{background:var(--cr-soft);color:var(--cr)}
+.pill.Alokasi,.pill.Pengembalian{background:var(--tr-soft);color:var(--tr)}
+tfoot td{font-weight:700;border-top:2px solid var(--ink);border-bottom:0;background:var(--soft)}
+.balanced{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;color:var(--dr);background:var(--dr-soft);padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em}
+.journal tbody.entry{border-bottom:1px solid var(--line-2)}
+.journal tbody.entry td{border-bottom:0;padding-top:3px;padding-bottom:3px}
+.journal tbody.entry tr:first-child td{padding-top:12px}
+.journal tbody.entry tr:last-child td{padding-bottom:12px}
+.acct{font-weight:600}
+.acct.credit{padding-left:44px;font-weight:500;color:var(--ink-2)}
+.memo{font-size:12.5px;color:var(--muted)}
+.opening td{background:#fcf8ee}
+
+/* Ledger summary */
+.strip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.strip div{background:var(--soft);border:1px solid var(--line-2);border-radius:12px;padding:12px 16px}
+.strip span{font-size:12px;color:var(--muted);font-weight:600;display:block}
+.strip b{font:600 21px var(--serif)}
+.strip .dr b{color:var(--dr)}
+.strip .cr b{color:var(--cr)}
+
+/* Divisions */
+.kaspim{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.kaspim strong{display:block;font:600 32px/1.2 var(--serif);margin-top:4px}
+.kaspim small{color:var(--muted)}
+.divgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:16px}
+.divcard{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:18px;padding:20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:16px;min-width:0}
+.divtop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.divtop strong{font:600 22px var(--serif);white-space:nowrap}
+.label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.member{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-2)}
+.avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--gold-soft);color:var(--gold-ink);font-weight:700;font-size:13px;flex:none}
+.email{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.divcard .actions{margin-top:auto}
+.howto{margin:0;padding-left:20px;display:grid;gap:8px;color:var(--ink-2)}
+
+/* Gate (login / error) */
+.gate{min-height:calc(100vh - 230px);display:grid;place-items:center}
+.gatecard{max-width:560px;width:100%;text-align:center;background:var(--paper);border:1px solid var(--line);border-radius:24px;padding:52px 36px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.gatecard:before{content:"";position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,#b88f45,#ecd7a3,#b88f45)}
+.gatecard .seal{width:64px;height:64px;font-size:32px;margin:0 auto 18px;border-radius:18px}
+.gatecard p{color:var(--muted);margin:14px auto 28px;max-width:420px}
+
+/* Dialog */
+dialog{width:min(520px,94vw);border:1px solid var(--line);border-radius:20px;padding:0;background:var(--paper);color:var(--ink);box-shadow:0 30px 80px -20px #0a2c2466}
+dialog::backdrop{background:#0a201ab3;backdrop-filter:blur(3px)}
+dialog form{padding:26px}
+.dhead{padding-bottom:14px;border-bottom:1px solid var(--line-2)}
+.dhead p{color:var(--muted);font-size:13.5px;margin-top:4px}
+label{display:grid;gap:6px;margin:14px 0 0;font-size:13px;font-weight:600;color:var(--ink-2)}
+input,select{font:500 15px var(--sans);color:var(--ink);border:1px solid #d6cdb8;padding:11px 12px;border-radius:10px;background:#fff;width:100%}
+input:focus,select:focus{outline:2px solid #c6a15b66;border-color:var(--gold)}
+input[readonly]{background:var(--soft)}
+select.compact{width:auto;padding:8px 10px;font-size:13.5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fixed{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--gold-soft);font-weight:600;display:flex;justify-content:space-between}
+.fixed span{color:var(--gold-ink);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+#hint{margin-top:10px}
+.error{color:var(--cr);font-size:14px;min-height:20px;margin-top:12px}
+.dfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}
+
+/* Toast */
+#toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);opacity:0;background:var(--emerald);color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;box-shadow:var(--shadow);transition:.25s;pointer-events:none;z-index:20;max-width:calc(100vw - 32px)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#toast.bad{background:var(--cr)}
+
+@media(max-width:1020px){.cards{grid-template-columns:1fr 1fr}.hero{grid-column:1/-1}.split{grid-template-columns:1fr}}
+@media(max-width:680px){
+ .bar-in{flex-wrap:wrap;gap:10px 14px;padding:12px 16px;min-height:0}
+ #chip{display:none}
+ nav{order:3;width:100%}
+ main{padding:22px 16px 56px}
+ .cards,.strip,.two{grid-template-columns:1fr}
+ .heading .actions{width:100%}
+ .heading .actions button{flex:1}
+ .panel,.card,.divcard{padding:16px}
+ .gatecard{padding:40px 22px}
+ .acct.credit{padding-left:24px}
+ .hide-sm{display:none}
+ th,td{padding:10px 8px}
+ table{font-size:13px}
+}
+@media print{
+ header.top,.heading .actions,.tools,#toast,dialog{display:none!important}
+ body{background:#fff}
+ main{padding:0;max-width:none}
+ .panel,.card{box-shadow:none;border-color:#bbb;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header class="top">
+ <div class="bar-in">
+  <div class="brand"><span class="seal">K</span>Buku Kas Banjar</div>
+  <nav aria-label="Menu utama"></nav>
+  <div class="who">
+   <span id="chip"></span>
+   <form id="logout" hidden action="/api/auth?action=logout" method="post"><button>Keluar</button></form>
+  </div>
+ </div>
+</header>
+<main>
+ <section id="gate" class="gate"><div class="gatecard"><div class="seal">K</div><span class="eyebrow">Buku Kas Banjar</span><h1>Memuat data kas…</h1></div></section>
+ <div id="shell" hidden>
+  <div class="heading">
+   <div><span class="eyebrow" id="eyebrow"></span><h1 id="title"></h1></div>
+   <div class="actions" id="quick"></div>
+  </div>
+  <div id="view"></div>
+ </div>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog>
+ <form>
+  <div class="dhead"><h2 id="ft"></h2><p id="fs"></p></div>
+  <div id="fields"></div>
+  <div class="error" role="alert"></div>
+  <div class="dfoot"><button type="button" id="close" class="ghost">Batal</button><button class="primary" id="save">Simpan</button></div>
+ </form>
+</dialog>
+<script src="/app.js"></script>
+</body>
+</html>

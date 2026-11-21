@@ -1,60 +1,309 @@
-function summary(s){
- let center=s.opening,spent=0;const balances=new Map(s.divisions.map(d=>[d,0])),cats=new Map();
- for(const [,type,div,n,cat] of s.rows){
- let v=balances.get(div)||0;
- if(type==='Alokasi'){center-=n;v+=n}
- if(type==='Pengembalian'){center+=n;v-=n}
- if(type==='Pengeluaran'){spent+=n;cats.set(cat,(cats.get(cat)||0)+n);if(div==='Pimpinan')center-=n;else v-=n}
- if(div!=='Pimpinan')balances.set(div,v)
- } return {center,spent,balances,cats};
-}
-const $=s=>document.querySelector(s), esc=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),rp=n=>'Rp '+n.toLocaleString('id-ID'),opts=a=>a.map(v=>'<option>'+esc(v)+'</option>').join('');
-let role,state,rev,tab='Dashboard',filter='Semua',mode;
-const buttons=['Dashboard','Divisi','Transaksi'],cats=['Listrik','Bensin','Konsumsi','Air','Internet','Perlengkapan','Pemeliharaan','Lainnya'];
-function render(){
- const admin=role==='pimpinan', division=state.divisions[0];
- $('.account').textContent=admin?'Kas pimpinan':'Divisi '+division;
+'use strict';
+// Baris transaksi dari server: [tanggal, jenis, divisi, nominal, kategori, keterangan, dicatat oleh, nomor bukti]
 
- const {center,spent,balances,cats:totals}=summary(state),divTotal=[...balances.values()].reduce((a,b)=>a+b,0);
- $('nav').innerHTML=(admin?buttons:buttons.filter(t=>t!=='Divisi')).map(x=>'<button data-tab="'+x+'" class="'+(x===tab?'on':'')+'">'+x+'</button>').join('');
- $('#title').textContent=tab==='Dashboard'? (admin?'Dashboard kas':'Kas Divisi '+division):tab==='Divisi'?'Kas per divisi':'Riwayat transaksi';
- const action=(name,label)=>'<button data-mode="'+name+'">'+label+'</button>';
- const chart=(items,denom,gold)=>items.map(([k,v])=>'<div class="row"><div class="line"><span>'+esc(k)+'</span><b>'+rp(v)+'</b></div><div class="bar '+(gold?'gold':'')+'"><i style="width:'+(denom?100*v/denom:0)+'%"></i></div></div>').join('');
- const panel=(title,extra,body)=>'<section class="panel"><div class="panelhead"><h2>'+title+'</h2>'+extra+'</div>'+body+'</section>';
- const cards='<div class="cards">'+(admin?[['Saldo pimpinan',center,'Saldo awal '+rp(state.opening||0)],['Saldo seluruh divisi',divTotal,balances.size+' divisi'],['Total pengeluaran',spent,'Akumulasi belanja tercatat']]:[['Saldo tersedia',divTotal,division],['Total diterima',state.rows.filter(r=>r[1]==='Alokasi').reduce((n,r)=>n+r[3],0),'Pembagian dana dari pimpinan'],['Total pengeluaran',spent,'Belanja divisi']]).map(([k,v,l])=>'<div class="card"><span>'+k+'</span><strong>'+rp(v)+'</strong><small>'+l+'</small></div>').join('')+'</div>';
- const divpanel=panel('Saldo divisi',action('Alokasi','Bagi saldo'),chart([...balances],divTotal,false));
- const category=panel('Pengeluaran per kategori','',chart([...totals].sort((a,b)=>b[1]-a[1]),spent,true)||'Belum ada pengeluaran.');
- let rows=state.rows.slice().reverse().sort((a,b)=>b[0].localeCompare(a[0]));
- if(tab==='Transaksi'&&filter!=='Semua')rows=rows.filter(r=>r[1]===filter);
- if(tab==='Dashboard')rows=rows.slice(0,5);
- const table=panel(tab==='Dashboard'?'Transaksi terakhir':'Daftar transaksi',tab==='Dashboard'?'<button data-tab="Transaksi">Lihat semua</button>':'<select class="filter" aria-label="Jenis transaksi" id="filter">'+opts(['Semua','Pengeluaran','Alokasi','Pengembalian'])+'</select>','<div class="scroll"><table><thead><tr>'+['Tanggal','Keterangan','Divisi','Jenis','Kategori','Nominal'].map(k=>'<th>'+k+'</th>').join('')+'</tr></thead><tbody>'+rows.map(([date,t,d,n,c,note])=>'<tr><td>'+esc(date.split('-').reverse().join('/'))+'</td><td>'+esc(note||c)+'</td><td>'+esc(d)+'</td><td><span class="pill '+(t==='Pengeluaran'?'expense':'')+'">'+esc(t)+'</span></td><td>'+esc(c)+'</td><td><b>'+rp(n)+'</b></td></tr>').join('')+'</tbody></table></div>'+(rows.length?'':'<p>Belum ada transaksi.</p>'));
- $('#view').innerHTML=tab==='Dashboard'?cards+(admin?'<div class="split">'+divpanel+category+'</div>':'<div style="margin-top:18px">'+category+'</div>')+table:tab==='Transaksi'?table:panel('Pengaturan kas','', '<div class="actions">'+action('Saldo awal','Atur saldo awal pimpinan')+action('Divisi','Tambah divisi')+action('Pengembalian','Catat pengembalian')+'</div>')+divpanel+panel('Akses pengurus',action('Akses','Atur akses'),'<p>Daftarkan email Google pengurus ke satu divisi.</p>'+(state.members||[]).map(m=>'<div class="row line"><span>'+esc(m.email)+' · '+esc(m.div)+'</span><button data-revoke="'+esc(m.email)+'">Cabut akses</button></div>').join(''));
- if($('#filter'))$('#filter').value=filter;
+// Perhitungan saldo — harus identik dengan summary() di google/Code.gs
+function summary(s){
+ let center=s.opening||0,spent=0,income=0;const balances=new Map(s.divisions.map(d=>[d,0])),cats=new Map(),incomeCats=new Map();
+ for(const [,type,div,n,cat] of s.rows){
+  let v=balances.get(div)||0;
+  if(type==='Alokasi'){center-=n;v+=n}
+  if(type==='Pengembalian'){center+=n;v-=n}
+  if(type==='Pengeluaran'){spent+=n;cats.set(cat,(cats.get(cat)||0)+n);if(div==='Pimpinan')center-=n;else v-=n}
+  if(type==='Pemasukan'){income+=n;incomeCats.set(cat,(incomeCats.get(cat)||0)+n);if(div==='Pimpinan')center+=n;else v+=n}
+  if(div!=='Pimpinan')balances.set(div,v)
+ }
+ return {center,spent,income,balances,cats,incomeCats};
 }
-document.addEventListener('click',e=>{let b=e.target.closest('button');if(!b)return;if(b.dataset.revoke){openForm('Cabut');$('input[name=email]').value=b.dataset.revoke}if(b.dataset.tab){tab=b.dataset.tab;render()}if(b.dataset.mode)openForm(b.dataset.mode)});
-document.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}if(e.target.name==='cat')$('#custom')?.toggleAttribute('hidden',e.target.value!=='Lainnya')});
+
+// ---------- Utilitas ----------
+const $=s=>document.querySelector(s);
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rp=n=>(n<0?'− ':'')+'Rp '+Math.abs(Math.round(n||0)).toLocaleString('id-ID');
+const num=n=>n?Math.round(n).toLocaleString('id-ID'):'';
+const MONTHS=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const tgl=d=>{if(!d)return '—';const [y,m,dd]=d.split('-');return dd+' '+MONTHS[+m-1].slice(0,3)+' '+y};
+const bulan=ym=>{const [y,m]=ym.split('-');return MONTHS[+m-1]+' '+y};
+const bukti=no=>no?'JU-'+String(no).padStart(4,'0'):'';
+const today=()=>new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'});
+const opts=(list,sel)=>list.map(o=>{const [v,t]=Array.isArray(o)?o:[o,o];return '<option value="'+esc(v)+'"'+(v===sel?' selected':'')+'>'+esc(t)+'</option>'}).join('');
 const field=(title,html)=>'<label>'+title+html+'</label>';
-function openForm(m){
- mode=m;const isTx=['Pengeluaran','Alokasi','Pengembalian'].includes(m);
- $('#ft').textContent=m==='Saldo awal'?'Atur saldo awal pimpinan':m==='Alokasi'?'Bagi saldo ke divisi':m==='Divisi'?'Tambah divisi':'Catat '+m.toLowerCase();
- let html='';
- if(m==='Akses'||m==='Cabut'){
- $('#ft').textContent=m==='Cabut'?'Cabut akses pengurus':'Atur akses pengurus';
- html=field('Email akun Google','<input type="email" name="email" required '+(m==='Cabut'?'readonly':'')+'>');
- if(m==='Akses')html+=field('Divisi yang dapat diakses','<select name="div">'+opts(state.divisions)+'</select>');
- }
- if(m==='Divisi')html=field('Nama divisi','<input name="div" required maxlength="80">');
- if(isTx){const list=m==='Pengeluaran'&&role==='pimpinan'?[...state.divisions,'Pimpinan']:state.divisions;
- html+=field(m==='Pengeluaran'?'Sumber dana':'Divisi','<select name="div">'+opts(list)+'</select>');
- if(m==='Pengeluaran')html+=field('Digunakan untuk biaya apa?','<select name="cat">'+opts(cats)+'</select>')+'<div hidden id="custom">'+field('Nama kategori lainnya','<input name="custom" maxlength="80">')+'</div>';
- if(m==='Alokasi')html+=field('Jenis pembagian','<select name="cat">'+opts(['Saldo awal','Tambahan dana','Kas bon','Pinjaman'])+'</select>');
- html+=field('Tanggal','<input type="date" name="date" required value="'+new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'})+'">');
- }
- if(isTx||m==='Saldo awal')html+=field('Nominal (Rp)','<input type="number" step="1" min="'+(m==='Saldo awal'?0:1)+'" name="amount" required value="'+(m==='Saldo awal'?state.opening:'')+'">');
- if(isTx)html+=field('Keterangan (opsional)','<input name="note" maxlength="120" placeholder="Misalnya pembayaran listrik balai banjar">');
- $('#fields').innerHTML=html;$('.error').textContent='';$('dialog').showModal();
+const btn=(label,data,cls)=>'<button type="button" class="'+(cls||'')+'" '+(data||'')+'>'+label+'</button>';
+const panel=(title,tools,body)=>'<section class="panel"><div class="panelhead"><h2>'+title+'</h2><div class="tools">'+(tools||'')+'</div></div>'+body+'</section>';
+const sumOf=(rows,type)=>rows.filter(r=>r[1]===type).reduce((n,r)=>n+r[3],0);
+
+const EXPENSE=['Listrik','Bensin','Konsumsi','Air','Internet','Perlengkapan','Pemeliharaan','Upakara','Lainnya'];
+const INCOME=['Iuran warga','Donasi','Punia','Sponsor','Hasil usaha','Bunga bank','Lainnya'];
+const ALLOC=['Saldo awal','Tambahan dana','Kas bon','Pinjaman'];
+const RETURNS=['Sisa dana','Pelunasan kas bon','Lainnya'];
+const TYPES=['Pemasukan','Pengeluaran','Alokasi','Pengembalian'];
+const TYPE_LABEL={Pemasukan:'Pemasukan',Pengeluaran:'Pengeluaran',Alokasi:'Bagi dana',Pengembalian:'Pengembalian'};
+
+let role,state,rev,mode,tab=decodeURIComponent(location.hash.slice(1))||'Dashboard',jType='Semua',jMonth='Semua',acc='*';
+const isAdmin=()=>role==='pimpinan';
+const myDiv=()=>state.divisions[0];
+const scope=()=>isAdmin()?'*':myDiv();
+const kas=d=>d==='Pimpinan'?'Kas Pimpinan':'Kas '+d;
+
+// ---------- Akuntansi ----------
+// Mutasi sebuah transaksi pada satu akun kas: [debit, kredit] atau null jika tidak menyentuh akun itu.
+// Akun '*' = seluruh kas banjar; perpindahan antar-kas (bagi dana, pengembalian) saling meniadakan.
+function move(r,a){
+ const [,t,d,n]=r;
+ if(a==='*')return t==='Pemasukan'?[n,0]:t==='Pengeluaran'?[0,n]:null;
+ if(t==='Alokasi')return a==='Pimpinan'?[0,n]:d===a?[n,0]:null;
+ if(t==='Pengembalian')return a==='Pimpinan'?[n,0]:d===a?[0,n]:null;
+ if(d!==a)return null;
+ return t==='Pemasukan'?[n,0]:[0,n];
 }
-$('#add').onclick=()=>openForm('Pengeluaran');$('#close').onclick=()=>$('dialog').close();
-async function load(){try{const response=await fetch('/api/kas'),r=await response.json();if(response.status===401){document.querySelector('#login').hidden=false;throw Error('Masuk dengan akun Google untuk membuka kas.')}if(response.status===403)document.querySelector("#logout").hidden=false;if(!response.ok)throw Error(r.error);document.querySelector('#logout').hidden=false;({state,rev,role}=r);$('#status').textContent='';$('#add').disabled=false;render()}catch(e){$('#view').replaceChildren();$('nav').replaceChildren();$('#add').disabled=true;$('#status').textContent=e.message||'Gagal memuat data kas.'}}
-$('dialog form').onsubmit=async e=>{e.preventDefault();const a=Object.fromEntries(new FormData(e.target));a.type=mode;a.rev=rev;a.amount=Number(a.amount);a.cat=a.cat==='Lainnya'?a.custom:a.cat||'Setoran';$('#save').disabled=true;try{const res=await fetch('/api/kas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)}),r=await res.json();if(!res.ok){if(res.status===401||res.status===403||res.status===409)await load();throw Error(r.error)}({state,rev,role}=r);render();$('dialog').close();$('#status').textContent='Perubahan tersimpan.'}catch(e){$('.error').textContent=e.message}finally{$('#save').disabled=false}};
+// Jurnal berpasangan: [akun debit, akun kredit]
+function entry(r){
+ const [,t,d,,c]=r;
+ if(t==='Pemasukan')return [kas(d),'Pendapatan · '+c];
+ if(t==='Pengeluaran')return ['Beban · '+c,kas(d)];
+ if(t==='Alokasi')return [kas(d),'Kas Pimpinan'];
+ return ['Kas Pimpinan',kas(d)];
+}
+function describe(r){
+ const [,t,d,,c,note]=r;
+ let base=c;
+ if(t==='Alokasi')base=(isAdmin()?'Bagi dana ke '+d:'Dana dari pimpinan')+' · '+c;
+ if(t==='Pengembalian')base=(isAdmin()?'Pengembalian dari '+d:'Dikembalikan ke pimpinan')+' · '+c;
+ return note?base+' — '+note:base;
+}
+const chrono=()=>state.rows.slice().sort((a,b)=>a[0].localeCompare(b[0])||(a[7]||0)-(b[7]||0));
+function ledger(a){
+ const out=[];let bal=0;
+ if(isAdmin()&&(a==='*'||a==='Pimpinan')&&state.opening){bal=state.opening;out.push({date:'',no:'',desc:'Saldo awal kas pimpinan',d:state.opening,k:0,bal,opening:true})}
+ for(const r of chrono()){const m=move(r,a);if(!m)continue;bal+=m[0]-m[1];out.push({date:r[0],no:bukti(r[7]),desc:describe(r),d:m[0],k:m[1],bal})}
+ return out;
+}
+function recap(a){
+ const map=new Map();
+ for(const l of ledger(a)){if(!l.date)continue;const key=l.date.slice(0,7),m=map.get(key)||{d:0,k:0,bal:0};m.d+=l.d;m.k+=l.k;m.bal=l.bal;map.set(key,m)}
+ return [...map].reverse();
+}
+function journalList(){
+ let list=chrono();
+ if(jType!=='Semua')list=list.filter(r=>r[1]===jType);
+ if(jMonth!=='Semua')list=list.filter(r=>r[0].startsWith(jMonth));
+ const lines=list.map(r=>({date:r[0],no:bukti(r[7]),desc:describe(r),acct:entry(r),n:r[3]}));
+ if(isAdmin()&&state.opening&&jType==='Semua'&&jMonth==='Semua')lines.unshift({date:'',no:'',desc:'Saldo awal kas pimpinan',acct:['Kas Pimpinan','Modal awal kas'],n:state.opening,opening:true});
+ return lines;
+}
+const months=()=>[...new Set(state.rows.map(r=>r[0].slice(0,7)))].sort().reverse();
+
+// ---------- Tampilan ----------
+function bars(items,total,tone){
+ if(!items.length)return '<p class="empty">Belum ada data.</p>';
+ return items.map(([k,v])=>'<div class="barrow"><div class="line"><span>'+esc(k)+'</span><b>'+rp(v)+'</b></div><div class="bar '+tone+'"><i style="width:'+(total>0?Math.min(100,Math.max(2,100*v/total)):0)+'%"></i></div></div>').join('');
+}
+function card(label,tag,value,note,cls){
+ return '<div class="card '+(cls||'')+'"><div class="k"><span>'+esc(label)+'</span>'+(tag?'<span class="tag '+tag[1]+'">'+tag[0]+'</span>':'')+'</div><strong>'+rp(value)+'</strong><small>'+esc(note)+'</small></div>';
+}
+function cards(s){
+ const divTotal=[...s.balances.values()].reduce((a,b)=>a+b,0);
+ if(isAdmin())return '<div class="cards">'
+  +card('Total kas banjar',null,s.center+divTotal,'Kas pimpinan '+rp(s.center)+' · Kas divisi '+rp(divTotal),'hero')
+  +card('Pemasukan',['Debit','dr'],s.income,'Di luar saldo awal '+rp(state.opening))
+  +card('Pengeluaran',['Kredit','cr'],s.spent,'Pimpinan dan seluruh divisi')
+  +card('Kas pimpinan',['Siap dibagi','gd'],s.center,s.balances.size+' divisi terdaftar')+'</div>';
+ const rows=state.rows;
+ return '<div class="cards">'
+  +card('Saldo kas '+myDiv(),null,divTotal,'Dana yang dapat digunakan divisi','hero')
+  +card('Dana dari pimpinan',['Debit','dr'],sumOf(rows,'Alokasi'),'Pembagian dana diterima')
+  +card('Pemasukan divisi',['Debit','dr'],sumOf(rows,'Pemasukan'),'Iuran, donasi, dan lainnya')
+  +card('Pengeluaran',['Kredit','cr'],sumOf(rows,'Pengeluaran'),'Dikembalikan ke pimpinan '+rp(sumOf(rows,'Pengembalian')))+'</div>';
+}
+function txTable(list){
+ if(!list.length)return '<p class="empty">Belum ada transaksi.</p>';
+ return '<div class="scroll"><table><thead><tr><th>Tanggal</th><th class="hide-sm">No. bukti</th><th>Keterangan</th>'+(isAdmin()?'<th class="hide-sm">Kas</th>':'')+'<th class="hide-sm">Jenis</th><th class="num">Debit</th><th class="num">Kredit</th></tr></thead><tbody>'
+  +list.map(r=>{const [d,k]=move(r,r[2])||[0,0];return '<tr><td class="nowrap">'+tgl(r[0])+'</td><td class="mono hide-sm">'+bukti(r[7])+'</td><td>'+esc(describe(r))+'</td>'+(isAdmin()?'<td class="nowrap hide-sm">'+esc(kas(r[2]))+'</td>':'')+'<td class="hide-sm"><span class="pill '+esc(r[1])+'">'+esc(TYPE_LABEL[r[1]]||r[1])+'</span></td><td class="num dr">'+num(d)+'</td><td class="num cr">'+num(k)+'</td></tr>'}).join('')
+  +'</tbody></table></div>';
+}
+function recapPanel(a){
+ const rec=recap(a).slice(0,6);
+ const body=rec.length?'<div class="scroll"><table><thead><tr><th>Bulan</th><th class="num">Debit</th><th class="num">Kredit</th><th class="num">Saldo akhir</th></tr></thead><tbody>'
+  +rec.map(([k,m])=>'<tr><td class="nowrap">'+bulan(k)+'</td><td class="num dr">'+(num(m.d)||'—')+'</td><td class="num cr">'+(num(m.k)||'—')+'</td><td class="num"><b>'+rp(m.bal)+'</b></td></tr>').join('')+'</tbody></table></div>':'<p class="empty">Belum ada transaksi.</p>';
+ return panel('Rekap bulanan','<span class="hint">Debit = kas masuk · Kredit = kas keluar</span>',body);
+}
+function dashboard(){
+ const s=summary(state),divTotal=[...s.balances.values()].reduce((a,b)=>a+b,0);
+ const expense=panel('Pengeluaran per kategori','',bars([...s.cats].sort((x,y)=>y[1]-x[1]),s.spent,'cr'));
+ const income=panel('Pemasukan per kategori','',bars([...s.incomeCats].sort((x,y)=>y[1]-x[1]),s.income,'dr'));
+ const recent=panel('Transaksi terakhir',btn('Lihat jurnal','data-tab="Jurnal"','ghost'),txTable(chrono().reverse().slice(0,6)));
+ if(isAdmin()){
+  const divs=panel('Saldo divisi',btn('Kelola divisi','data-tab="Divisi"','ghost'),bars([...s.balances],divTotal,'gold'));
+  return cards(s)+'<div class="split">'+divs+recapPanel('*')+'</div><div class="split">'+expense+income+'</div>'+recent;
+ }
+ return cards(s)+'<div class="split">'+recapPanel(myDiv())+expense+'</div>'+(s.income?income:'')+recent;
+}
+function journalView(){
+ const lines=journalList(),total=lines.reduce((n,l)=>n+l.n,0);
+ const tools='<select id="jtype" class="compact" aria-label="Jenis transaksi">'+opts([['Semua','Semua jenis'],...TYPES.map(t=>[t,TYPE_LABEL[t]])],jType)+'</select>'
+  +'<select id="jmonth" class="compact" aria-label="Bulan">'+opts([['Semua','Semua bulan'],...months().map(m=>[m,bulan(m)])],jMonth)+'</select>'
+  +btn('Unduh CSV','data-export="jurnal"','ghost')+btn('Cetak','data-print','ghost');
+ if(!lines.length)return panel('Jurnal umum',tools,'<p class="empty">Belum ada transaksi untuk filter ini.</p>');
+ const body='<div class="scroll"><table class="journal"><thead><tr><th>Tanggal / bukti</th><th>Akun &amp; keterangan</th><th class="num">Debit</th><th class="num">Kredit</th></tr></thead>'
+  +lines.map(l=>'<tbody class="entry'+(l.opening?' opening':'')+'"><tr><td rowspan="3" class="nowrap">'+tgl(l.date)+'<div class="mono">'+(l.no||'Saldo awal')+'</div></td><td class="acct">'+esc(l.acct[0])+'</td><td class="num">'+num(l.n)+'</td><td class="num"></td></tr><tr><td class="acct credit">'+esc(l.acct[1])+'</td><td class="num"></td><td class="num">'+num(l.n)+'</td></tr><tr><td class="memo">'+esc(l.desc)+'</td><td></td><td></td></tr></tbody>').join('')
+  +'<tfoot><tr><td colspan="2">Jumlah <span class="balanced">Seimbang</span></td><td class="num">'+rp(total)+'</td><td class="num">'+rp(total)+'</td></tr></tfoot></table></div>';
+ return panel('Daftar entri',tools,'<p class="hint" style="margin-bottom:12px">Setiap transaksi dicatat dua sisi: akun yang didebit di atas, akun yang dikredit menjorok ke kanan. Total debit selalu sama dengan total kredit.</p>'+body);
+}
+function ledgerAccounts(){return [['*','Semua kas banjar'],['Pimpinan','Kas Pimpinan'],...state.divisions.map(d=>[d,kas(d)])]}
+function ledgerView(){
+ if(!isAdmin())acc=myDiv();else if(!ledgerAccounts().some(([v])=>v===acc))acc='*';
+ const lines=ledger(acc),d=lines.reduce((n,l)=>n+l.d,0),k=lines.reduce((n,l)=>n+l.k,0);
+ const name=ledgerAccounts().find(([v])=>v===acc)[1];
+ const tools=(isAdmin()?'<select id="acc" class="compact" aria-label="Akun kas">'+opts(ledgerAccounts(),acc)+'</select>':'')+btn('Unduh CSV','data-export="buku"','ghost')+btn('Cetak','data-print','ghost');
+ const strip='<div class="strip"><div class="dr"><span>Total debit (masuk)</span><b>'+rp(d)+'</b></div><div class="cr"><span>Total kredit (keluar)</span><b>'+rp(k)+'</b></div><div><span>Saldo akhir</span><b>'+rp(d-k)+'</b></div></div>';
+ const body=lines.length?'<div class="scroll"><table><thead><tr><th>Tanggal</th><th class="hide-sm">No. bukti</th><th>Keterangan</th><th class="num">Debit</th><th class="num">Kredit</th><th class="num">Saldo</th></tr></thead><tbody>'
+  +lines.map(l=>'<tr'+(l.opening?' class="opening"':'')+'><td class="nowrap">'+tgl(l.date)+'</td><td class="mono hide-sm">'+(l.no||'—')+'</td><td>'+esc(l.desc)+'</td><td class="num dr">'+num(l.d)+'</td><td class="num cr">'+num(l.k)+'</td><td class="num"><b>'+rp(l.bal)+'</b></td></tr>').join('')+'</tbody></table></div>':'<p class="empty">Belum ada mutasi pada akun ini.</p>';
+ const note=acc==='*'?'<p class="hint" style="margin-bottom:12px">Gabungan seluruh kas. Pembagian dana dan pengembalian tidak ditampilkan karena hanya memindahkan uang antar-kas.</p>':'';
+ return panel('Buku kas · '+esc(name),tools,note+strip+body);
+}
+function divisionsView(){
+ const s=summary(state);
+ const settings=panel('Kas pimpinan','','<div class="kaspim"><div><span class="label">Saldo siap dibagi</span><strong>'+rp(s.center)+'</strong><small>Saldo awal '+rp(state.opening)+'</small></div><div class="actions">'
+  +btn('Atur saldo awal','data-mode="Saldo awal"')+btn('＋ Tambah divisi','data-mode="Divisi"','primary')+btn('Catat pengembalian','data-mode="Pengembalian"')+btn('Buku kas','data-ledger="Pimpinan"','ghost')+'</div></div>');
+ const grid=state.divisions.map(d=>{
+  const members=(state.members||[]).filter(m=>m.div===d);
+  return '<article class="divcard"><div class="divtop"><div><span class="label">Divisi</span><h3>'+esc(d)+'</h3></div><strong>'+rp(s.balances.get(d))+'</strong></div>'
+   +'<div><span class="label">Akun pengurus</span>'+(members.length?members.map(m=>'<div class="member"><span class="avatar">'+esc(m.email[0].toUpperCase())+'</span><span class="email" title="'+esc(m.email)+'">'+esc(m.email)+'</span><button type="button" class="link danger" data-revoke="'+esc(m.email)+'">Cabut</button></div>').join(''):'<p class="empty">Belum ada akun. Tambahkan email Google pengurus.</p>')+'</div>'
+   +'<div class="actions">'+btn('⇄ Bagi dana','data-mode="Alokasi" data-div="'+esc(d)+'"')+btn('＋ Akun','data-mode="Akses" data-div="'+esc(d)+'"')+btn('Buku kas','data-ledger="'+esc(d)+'"','ghost')+'</div></article>';
+ }).join('');
+ const howto=panel('Cara kerja akun','','<ol class="howto"><li>Tambahkan divisi, lalu klik <b>＋ Akun</b> dan masukkan email Google pengurus divisi tersebut. Satu divisi boleh punya beberapa akun.</li><li>Selama aplikasi Google masih berstatus <i>Testing</i>, daftarkan email yang sama di Google Auth Platform → Audience → Test users.</li><li>Bagikan link aplikasi. Pengurus masuk dengan akun Google-nya dan hanya melihat dashboard, jurnal, dan buku kas divisinya.</li><li>Pengurus dapat mencatat pemasukan dan pengeluaran divisinya. Pembagian dana dan pengembalian hanya dicatat pimpinan.</li></ol>');
+ return settings+(grid?'<div class="divgrid">'+grid+'</div>':panel('Divisi','','<p class="empty">Belum ada divisi. Klik <b>＋ Tambah divisi</b> untuk memulai.</p>'))+howto;
+}
+function render(){
+ $('#gate').hidden=true;$('#shell').hidden=false;
+ const tabs=isAdmin()?['Dashboard','Jurnal','Buku kas','Divisi']:['Dashboard','Jurnal','Buku kas'];
+ if(!tabs.includes(tab))tab='Dashboard';
+ history.replaceState(null,'',tab==='Dashboard'?location.pathname:'#'+encodeURIComponent(tab));
+ $('nav').innerHTML=tabs.map(t=>'<button type="button" data-tab="'+t+'" class="'+(t===tab?'on':'')+'">'+(t==='Divisi'?'Divisi &amp; akun':t)+'</button>').join('');
+ $('#chip').innerHTML='<span class="role">'+(isAdmin()?'Pimpinan':'Pengurus')+'</span>'+esc(isAdmin()?'Kas pimpinan':'Divisi '+myDiv());
+ $('#eyebrow').textContent=isAdmin()?'Pimpinan banjar':'Divisi '+myDiv();
+ $('#title').textContent={Dashboard:isAdmin()?'Ringkasan kas':'Kas divisi '+myDiv(),Jurnal:'Jurnal umum','Buku kas':'Buku kas',Divisi:'Divisi & akun'}[tab];
+ $('#quick').innerHTML=btn('＋ Pemasukan','data-mode="Pemasukan"','gold')+btn('− Pengeluaran','data-mode="Pengeluaran"','primary')+(isAdmin()?btn('⇄ Bagi dana','data-mode="Alokasi"'):'');
+ $('#view').innerHTML=tab==='Dashboard'?dashboard():tab==='Jurnal'?journalView():tab==='Buku kas'?ledgerView():divisionsView();
+}
+function showGate(kind,msg){
+ $('#shell').hidden=true;$('#gate').hidden=false;$('nav').replaceChildren();$('#chip').replaceChildren();
+ const title={login:'Kas banjar yang rapi, transparan, dan aman.',denied:'Akun belum terdaftar',error:'Kas belum dapat dimuat'}[kind];
+ const action={login:'<a class="btn primary big" href="/api/auth?action=login">Masuk dengan Google</a>',denied:btn('Keluar &amp; ganti akun','data-logout','primary big'),error:btn('Coba lagi','data-reload','primary big')}[kind];
+ $('#gate').innerHTML='<div class="gatecard"><div class="seal">K</div><span class="eyebrow">Buku Kas Banjar</span><h1>'+title+'</h1><p>'+esc(msg)+'</p>'+action+'</div>';
+}
+
+// ---------- Formulir ----------
+const FORM={
+ Pemasukan:['Catat pemasukan','Kas bertambah: akun kas didebit, akun pendapatan dikredit.'],
+ Pengeluaran:['Catat pengeluaran','Kas berkurang: akun beban didebit, akun kas dikredit.'],
+ Alokasi:['Bagi dana ke divisi','Dana berpindah dari Kas Pimpinan ke kas divisi.'],
+ Pengembalian:['Catat pengembalian','Sisa dana divisi dikembalikan ke Kas Pimpinan.'],
+ 'Saldo awal':['Atur saldo awal','Saldo Kas Pimpinan sebelum transaksi pertama dicatat.'],
+ Divisi:['Tambah divisi','Divisi baru dimulai dengan saldo nol.'],
+ Akses:['Tambah akun pengurus','Pengurus masuk dengan akun Google ini dan hanya melihat kas divisinya.'],
+ Cabut:['Cabut akses pengurus','Email ini tidak dapat membuka kas lagi.']
+};
+function openForm(m,div){
+ mode=m;let h='';
+ if(m==='Akses'||m==='Cabut'){
+  h=field('Email akun Google','<input type="email" name="email" required autocomplete="off" placeholder="nama@gmail.com"'+(m==='Cabut'?' readonly':'')+'>');
+  if(m==='Akses')h+=field('Divisi','<select name="div">'+opts(state.divisions,div)+'</select>');
+ }
+ if(m==='Divisi')h=field('Nama divisi','<input name="div" required maxlength="80" placeholder="Misalnya Upacara">');
+ if(TYPES.includes(m)){
+  if(isAdmin()){
+   const list=m==='Pemasukan'||m==='Pengeluaran'?[['Pimpinan','Kas Pimpinan'],...state.divisions.map(d=>[d,kas(d)])]:state.divisions;
+   const label={Pemasukan:'Masuk ke kas',Pengeluaran:'Dibayar dari kas',Alokasi:'Divisi penerima',Pengembalian:'Dikembalikan oleh divisi'}[m];
+   h+=field(label,'<select name="div">'+opts(list,div)+'</select>');
+  }else h+='<input type="hidden" name="div" value="'+esc(myDiv())+'"><div class="fixed"><span>Akun kas</span>'+esc(kas(myDiv()))+'</div>';
+  const cats={Pemasukan:INCOME,Pengeluaran:EXPENSE,Alokasi:ALLOC,Pengembalian:RETURNS}[m];
+  h+=field({Pemasukan:'Sumber pemasukan',Pengeluaran:'Digunakan untuk'}[m]||'Jenis','<select name="cat">'+opts(cats)+'</select>')
+   +'<div hidden id="custom">'+field('Nama kategori','<input name="custom" maxlength="80">')+'</div>'
+   +'<div class="two">'+field('Tanggal','<input type="date" name="date" required value="'+today()+'">')+field('Nominal (Rp)','<input name="amount" inputmode="numeric" autocomplete="off" required placeholder="0">')+'</div>'
+   +'<p class="hint" id="hint"></p>'
+   +field('Keterangan (opsional)','<input name="note" maxlength="120" placeholder="Misalnya pembayaran listrik balai banjar">');
+ }
+ if(m==='Saldo awal')h+=field('Nominal (Rp)','<input name="amount" inputmode="numeric" autocomplete="off" required value="'+(num(state.opening)||'0')+'">');
+ $('#ft').textContent=FORM[m][0];$('#fs').textContent=FORM[m][1];
+ $('#fields').innerHTML=h;$('.error').textContent='';
+ updateHint();$('dialog').showModal();
+}
+function updateHint(){
+ const h=$('#hint');if(!h)return;
+ const s=summary(state),div=$('dialog [name=div]')?.value,bal=d=>d==='Pimpinan'?s.center:s.balances.get(d)||0;
+ h.textContent=mode==='Alokasi'?'Saldo Kas Pimpinan: '+rp(s.center):mode==='Pengembalian'?'Saldo '+kas(div)+': '+rp(bal(div)):mode==='Pengeluaran'?'Saldo tersedia: '+rp(bal(div)):'Saldo '+kas(div)+' saat ini: '+rp(bal(div));
+}
+let toastTimer;
+function toast(msg,bad){const t=$('#toast');t.textContent=msg;t.className='show'+(bad?' bad':'');clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.className=''},3200)}
+
+// ---------- Ekspor ----------
+function download(name,rows){
+ const cell=v=>{if(typeof v==='number')return String(v);v=String(v??'');if(/^[=+\-@\t\r]/.test(v))v="'"+v;return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+ const blob=new Blob(['﻿'+rows.map(r=>r.map(cell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+function exportCsv(kind){
+ const stamp=today();
+ if(kind==='jurnal'){
+  const rows=[['Tanggal','No. bukti','Akun','Debit','Kredit','Keterangan']];
+  for(const l of journalList()){rows.push([l.date,l.no,l.acct[0],l.n,'',l.desc]);rows.push([l.date,l.no,l.acct[1],'',l.n,''])}
+  return download('jurnal-umum-'+stamp+'.csv',rows);
+ }
+ const rows=[['Tanggal','No. bukti','Keterangan','Debit','Kredit','Saldo']];
+ for(const l of ledger(acc))rows.push([l.date,l.no,l.desc,l.d||'',l.k||'',l.bal]);
+ download('buku-kas-'+(acc==='*'?'semua':acc).toLowerCase().replace(/[^a-z0-9]+/g,'-')+'-'+stamp+'.csv',rows);
+}
+
+// ---------- Event ----------
+document.addEventListener('click',e=>{
+ const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+ if(d.tab){tab=d.tab;render();window.scrollTo({top:0,behavior:'smooth'})}
+ if(d.mode)openForm(d.mode,d.div);
+ if(d.revoke){openForm('Cabut');$('dialog [name=email]').value=d.revoke}
+ if(d.ledger){acc=d.ledger;tab='Buku kas';render();window.scrollTo({top:0,behavior:'smooth'})}
+ if(d.export)exportCsv(d.export);
+ if('print' in d)window.print();
+ if('logout' in d)$('#logout').requestSubmit();
+ if('reload' in d)load();
+ if(b.id==='close')$('dialog').close();
+});
+document.addEventListener('change',e=>{
+ const t=e.target;
+ if(t.id==='jtype'){jType=t.value;render()}
+ if(t.id==='jmonth'){jMonth=t.value;render()}
+ if(t.id==='acc'){acc=t.value;render()}
+ if(t.name==='cat'&&t.closest('dialog')){const other=t.value==='Lainnya';$('#custom').hidden=!other;$('[name=custom]').required=other}
+ if(t.name==='div'&&t.closest('dialog'))updateHint();
+});
+document.addEventListener('input',e=>{
+ const t=e.target;if(t.name!=='amount')return;
+ const v=t.value.replace(/\D/g,'').slice(0,15);t.value=v?Number(v).toLocaleString('id-ID'):'';
+});
+$('dialog form').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const a=Object.fromEntries(new FormData(e.target));
+ a.type=mode;a.rev=rev;a.amount=Number(String(a.amount||'').replace(/\D/g,''));
+ if(a.cat==='Lainnya')a.cat=a.custom;
+ if(!a.cat)a.cat='Setoran';
+ delete a.custom;
+ $('#save').disabled=true;
+ try{
+  const res=await fetch('/api/kas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)}),r=await res.json();
+  if(!res.ok){if(res.status===401||res.status===403||res.status===409)await load();throw Error(r.error||'Gagal menyimpan.')}
+  ({state,rev,role}=r);render();$('dialog').close();toast('Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase()));
+ }catch(err){$('.error').textContent=err.message}
+ finally{$('#save').disabled=false}
+});
+
+async function load(){
+ try{
+  const res=await fetch('/api/kas'),r=await res.json().catch(()=>({}));
+  if(res.status===401)return showGate('login','Masuk dengan akun Google yang telah didaftarkan oleh pimpinan. Setiap divisi hanya melihat kasnya sendiri.');
+  if(res.status===403){$('#logout').hidden=false;return showGate('denied',r.error||'Email Anda belum terdaftar. Hubungi pimpinan.')}
+  if(!res.ok)throw Error(r.error);
+  ({state,rev,role}=r);$('#logout').hidden=false;
+  if(!isAdmin())acc=myDiv();
+  render();
+ }catch(err){showGate('error',err.message||'Gagal memuat data kas.')}
+}
 load();

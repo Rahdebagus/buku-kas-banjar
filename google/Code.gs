@@ -1,13 +1,17 @@
+// Baris transaksi: [tanggal, jenis, divisi, nominal, kategori, keterangan, dicatat oleh, nomor bukti]
+// summary() harus identik dengan public/app.js
 function summary(s){
- let center=s.opening,spent=0;const balances=new Map(s.divisions.map(d=>[d,0])),cats=new Map();
+ let center=s.opening||0,spent=0,income=0;const balances=new Map(s.divisions.map(d=>[d,0])),cats=new Map(),incomeCats=new Map();
  for(const [,type,div,n,cat] of s.rows){
  let v=balances.get(div)||0;
  if(type==='Alokasi'){center-=n;v+=n}
  if(type==='Pengembalian'){center+=n;v-=n}
  if(type==='Pengeluaran'){spent+=n;cats.set(cat,(cats.get(cat)||0)+n);if(div==='Pimpinan')center-=n;else v-=n}
+ if(type==='Pemasukan'){income+=n;incomeCats.set(cat,(incomeCats.get(cat)||0)+n);if(div==='Pimpinan')center+=n;else v+=n}
  if(div!=='Pimpinan')balances.set(div,v)
- } return {center,spent,balances,cats};
+ } return {center,spent,income,balances,cats,incomeCats};
 }
+const TX_TYPES=['Pemasukan','Pengeluaran','Alokasi','Pengembalian'];
 function apply(s,a){
  const clean=x=>typeof x==='string'?x.trim().slice(0,120):'';
  const div=clean(a.div),n=a.amount,type=a.type;
@@ -15,10 +19,11 @@ function apply(s,a){
  if(!Number.isSafeInteger(n)||n<0||n>1e14)throw Error('Periksa nominal rupiah.');
  const {center,balances}=summary(s);
  if(type==='Saldo awal'){if(center+n-s.opening<0)throw Error('Saldo awal terlalu kecil untuk transaksi yang sudah tercatat.');s.opening=n;return}
- if(!['Pengeluaran','Alokasi','Pengembalian'].includes(type)||!n||(!s.divisions.includes(div)&&!(div==='Pimpinan'&&type==='Pengeluaran')))throw Error('Periksa jenis transaksi dan divisi.');
- if((type==='Alokasi'||div==='Pimpinan'?center:balances.get(div))<n)throw Error('Saldo sumber dana tidak mencukupi.');
+ const ownCash=type==='Pemasukan'||type==='Pengeluaran';
+ if(!TX_TYPES.includes(type)||!n||(!s.divisions.includes(div)&&!(div==='Pimpinan'&&ownCash)))throw Error('Periksa jenis transaksi dan divisi.');
+ if(type!=='Pemasukan'&&(type==='Alokasi'||div==='Pimpinan'?center:balances.get(div))<n)throw Error('Saldo sumber dana tidak mencukupi.');
  if(!/^\d{4}-\d\d-\d\d$/.test(a.date)||!clean(a.cat))throw Error('Tanggal dan kategori wajib diisi.');
- s.rows.push([a.date,type,div,n,clean(a.cat),clean(a.note)])
+ s.rows.push([a.date,type,div,n,clean(a.cat),clean(a.note),clean(a.by),s.rows.length+1])
 }
 
 const HEADER=['Waktu pencatatan','Email pencatat','Aktivitas','Divisi','Nominal (Rp)','Kategori','Keterangan','Tanggal transaksi','Data sistem'];
@@ -64,10 +69,10 @@ function doPost(e){
  const admin=email===owner,member=state.members.find(m=>m.email===email);
  if(!admin&&!member)return reply(403,{error:'Email Anda belum terdaftar. Hubungi pimpinan.'});
  if(action){
- if(!admin&&(action.type!=='Pengeluaran'||action.div!==member.div))return reply(403,{error:'Aksi di luar akses divisi.'});
+ if(!admin&&(!['Pengeluaran','Pemasukan'].includes(action.type)||action.div!==member.div))return reply(403,{error:'Aksi di luar akses divisi.'});
  if(rev!==action.rev)return reply(409,{error:'Data berubah. Periksa saldo terbaru sebelum menyimpan kembali.'});
  const a={};for(const k of ['type','div','date','cat','note','email'])a[k]=String(action[k]||'').trim().slice(0,k==='email'?254:120);
- a.amount=action.amount;
+ a.amount=action.amount;a.by=email;
  if(['Akses','Cabut'].includes(a.type)&&a.email.toLowerCase()===owner)return reply(400,{error:'Email tersebut adalah akun pimpinan.'});
  try{applyEvent(state,a)}catch(err){return reply(400,{error:err.message})}
  const safe=x=>/^[=+@\-]/.test(x)?"'"+x:x;

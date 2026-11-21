@@ -58,6 +58,16 @@ Di Project → Settings → Environment Variables, isi untuk Production lalu **r
 4. Berikan link Vercel kepada pengurus. Setelah masuk, ia hanya menerima data Upacara. Klik Catat pengeluaran → Bensin → Rp50.000. Saldo Upacara kini Rp450.000.
 5. Untuk mengecek akses, buka jendela privat dan login dengan email pengurus. Pengurus hanya melihat Dashboard dan Transaksi miliknya. Pimpinan dapat mencabut akses lewat Divisi → Akses pengurus.
 
+## 6. Pembukuan: debit, kredit, dan jurnal
+
+- **Akun:** pimpinan memakai email OWNER_EMAIL. Setiap divisi memakai satu atau beberapa email Google yang didaftarkan di Divisi & akun. Pengurus hanya menerima data divisinya.
+- **Jenis transaksi:** Pemasukan (kas didebit), Pengeluaran (kas dikredit), Bagi dana (Kas Pimpinan → kas divisi), dan Pengembalian (kas divisi → Kas Pimpinan). Pengurus dapat mencatat pemasukan dan pengeluaran divisinya sendiri.
+- **Jurnal umum:** setiap transaksi tampil sebagai pasangan debit/kredit dengan nomor bukti JU-0001 dan seterusnya. Total debit selalu sama dengan total kredit.
+- **Buku kas:** mutasi per akun kas dengan saldo berjalan. Tersedia juga rekap bulanan di dashboard.
+- Jurnal dan buku kas dapat diunduh sebagai CSV (terbuka di Excel/Google Sheets) atau dicetak.
+
+Setiap kali google/Code.gs berubah, salin ulang ke Apps Script lalu Deploy → Manage deployments → Edit → Version: New version → Deploy. Tanpa langkah ini, jenis transaksi baru seperti Pemasukan akan ditolak.
+
 ## Pengujian dan pemecahan masalah
 
 Jalankan npm test dengan Node.js 22. Pengujian lokal memakai simulasi layanan Google. Pada deployment Anda, cek login dengan dua akun berbeda dan pastikan transaksi uji muncul di tab BukuKas.
