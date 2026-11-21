@@ -74,6 +74,18 @@ Di Project → Settings → Environment Variables, isi untuk Production lalu **r
 - Folder Drive tetap privat. Bukti dibuka melalui aplikasi, dan pengurus hanya dapat membuka bukti divisinya.
 - Setelah memperbarui Code.gs, jalankan `setup` sekali di editor Apps Script untuk memberi izin akses Google Drive, lalu buat versi deployment baru.
 
+## 8. Notifikasi Telegram
+
+Setiap transaksi dan perubahan pengaturan dikirim ke Telegram beserta sisa saldo.
+
+1. Di Telegram, buka **@BotFather**, kirim `/newbot`, beri nama dan username bot. Salin token yang diberikan.
+2. Buat grup pimpinan (atau gunakan chat pribadi), tambahkan bot, lalu kirim satu pesan di grup.
+3. Di Script Properties tambahkan `TELEGRAM_BOT_TOKEN` (token dari BotFather). Jalankan fungsi `cekTelegram` di editor. Log eksekusi menampilkan Chat ID grup.
+4. Tambahkan `TELEGRAM_CHAT_ID` berisi Chat ID grup pimpinan (biasanya diawali `-100`). Jalankan `cekTelegram` sekali lagi untuk mengirim pesan uji.
+5. Opsional: untuk grup tiap divisi, tambahkan bot ke grup divisi, kirim pesan, jalankan `cekTelegram`, lalu di aplikasi buka **Divisi & akun → Atur** pada kartu divisi dan tempel Chat ID-nya.
+
+Grup pimpinan menerima semua notifikasi dengan saldo Kas Pimpinan, setiap divisi, dan total kas. Grup divisi hanya menerima transaksi divisinya dan sisa saldo divisinya. Token bot hanya disimpan di Script Properties. Jika Telegram gagal, transaksi tetap tersimpan.
+
 Setiap kali google/Code.gs berubah, salin ulang ke Apps Script lalu Deploy → Manage deployments → Edit → Version: New version → Deploy. Tanpa langkah ini, jenis transaksi baru seperti Pemasukan akan ditolak.
 
 ## Pengujian dan pemecahan masalah

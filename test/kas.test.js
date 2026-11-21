@@ -7,8 +7,8 @@ import {seal,unpack} from '../auth-utils.js';
 
 const boss='boss@example.com',user='staff@example.com';
 // Simulasi Apps Script: Sheet, Properties, Lock, dan Drive dalam memori.
-function makeScript(key){
- const events=[],props={OWNER_EMAIL:boss,SHEETS_SECRET:key,SHEET_ID:'mock'},drive={folders:[],files:new Map()};
+function makeScript(key,extraProps={}){
+ const events=[],props={OWNER_EMAIL:boss,SHEETS_SECRET:key,SHEET_ID:'mock',...extraProps},drive={folders:[],files:new Map()},sent=[];
  function folder(name,parent){
   const f={name,parent,children:[],getId:()=>'folder-'+name,getUrl:()=>'https://drive/'+name,
    getFoldersByName:n=>{const hit=f.children.filter(c=>c.name===n);return {hasNext:()=>hit.length>0,next:()=>hit.shift()}},
@@ -21,6 +21,8 @@ function makeScript(key){
   PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k],setProperty:(k,v)=>{props[k]=v}})},
   Utilities:{Charset:{UTF_8:'UTF-8'},computeHmacSha256Signature:(p,s)=>createHmac('sha256',s).update(p).digest(),base64EncodeWebSafe:b=>b.toString('base64url'),
    base64Decode:s=>[...Buffer.from(s,'base64')],base64Encode:b=>Buffer.from(b).toString('base64'),newBlob:(bytes,type,name)=>({bytes,type,name})},
+  UrlFetchApp:{fetchAll:reqs=>{for(const r of reqs)sent.push({url:r.url,...JSON.parse(r.payload)});return reqs.map(()=>({getResponseCode:()=>200}))}},
+  console:{warn(){}},
   DriveApp:{createFolder:n=>folder(n,null),getFolderById:id=>drive.folders.find(f=>f.getId()===id),getFileById:id=>drive.files.get(id)},
   SpreadsheetApp:{flush(){},openById:()=>({getSheetByName:()=>({getLastRow:()=>events.length+1,getRange:()=>({getValues:()=>events.map(e=>[e[8]]),getValue:()=>'Bukti',setValue(){return this},setFontWeight(){}}),appendRow:r=>events.push(r)})})},
   ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})}
@@ -28,7 +30,7 @@ function makeScript(key){
  vm.runInContext(fs.readFileSync(new URL('../google/Code.gs',import.meta.url),'utf8'),context);
  function call(email,action=null,bad=false){const payload=JSON.stringify({email,time:Date.now(),action});return context.doPost({postData:{contents:JSON.stringify({payload,signature:bad?'invalid':createHmac('sha256',key).update(payload).digest('base64url')})}})}
  const add=(email,type,rest={})=>call(email,{rev:events.length,type,...rest});
- return {context,events,props,drive,call,add};
+ return {context,events,props,drive,sent,call,add};
 }
 
 test('Alokasi, pengeluaran, isolasi divisi, konflik revisi dan pencabutan akses',()=>{
@@ -104,4 +106,45 @@ test('Bukti diunggah ke Drive per tahun/bulan/divisi, dapat dilampirkan belakang
  const again=call(boss).body.state;assert.equal(again.rows[0][8],pdf.id);assert.equal(again.rows[3][8],row[8]);
 });
 
+test('Telegram: grup pimpinan menerima semua saldo, grup divisi hanya saldonya sendiri',()=>{
+ const {sent,call,add,events}=makeScript('t'.repeat(48),{TELEGRAM_BOT_TOKEN:'123:ABC',TELEGRAM_CHAT_ID:'-1001111111111'});
+ for(const d of ['Upacara','Konsumsi'])add(boss,'Divisi',{div:d});
+ add(boss,'Saldo awal',{amount:1000000});
+ add(boss,'Alokasi',{date:'2026-11-06',div:'Upacara',cat:'Saldo awal',amount:200000});
+ add(boss,'Alokasi',{date:'2026-11-06',div:'Konsumsi',cat:'Saldo awal',amount:150000});
+ add(boss,'Akses',{email:user,div:'Upacara'});
+ assert.ok(sent.every(m=>m.chat_id==='-1001111111111'&&m.url==='https://api.telegram.org/bot123:ABC/sendMessage'),'sebelum grup divisi diatur, hanya grup pimpinan');
+ assert.match(sent.find(m=>m.text.includes('Akun pengurus')).text,/st\*\*\*@example\.com/);
+ // Pengurus tidak boleh mengatur grup; chat ID harus valid
+ assert.equal(add(user,'Telegram',{div:'Upacara',chat:'-1002222222222'}).status,403);
+ assert.equal(add(boss,'Telegram',{div:'Upacara',chat:'bukan-angka'}).status,400);
+ sent.length=0;
+ assert.equal(add(boss,'Telegram',{div:'Upacara',chat:'-1002222222222'}).status,200);
+ assert.deepEqual(sent.map(m=>m.chat_id).sort(),['-1001111111111','-1002222222222']);
+ sent.length=0;
+ assert.equal(add(user,'Pengeluaran',{date:'2026-11-21',div:'Upacara',cat:'Bensin',note:'Motor <kirim>',amount:50000}).status,200);
+ const toBoss=sent.find(m=>m.chat_id==='-1001111111111'),toDiv=sent.find(m=>m.chat_id==='-1002222222222');
+ assert.equal(sent.length,2);assert.equal(toBoss.parse_mode,'HTML');
+ assert.match(toBoss.text,/💸 <b>Pengeluaran<\/b> · Divisi Upacara/);
+ assert.match(toBoss.text,/Rp 50\.000/);assert.match(toBoss.text,/Motor &lt;kirim&gt;/);
+ assert.match(toBoss.text,/Kas Pimpinan: Rp 650\.000/);assert.match(toBoss.text,/Upacara: Rp 150\.000/);assert.match(toBoss.text,/Konsumsi: Rp 150\.000/);
+ assert.match(toBoss.text,/Total kas banjar: Rp 950\.000/);
+ assert.match(toDiv.text,/Sisa saldo Divisi Upacara: Rp 150\.000/);
+ assert.ok(!toDiv.text.includes('Konsumsi')&&!toDiv.text.includes('Kas Pimpinan:'),'grup divisi tidak melihat saldo divisi lain');
+ // Transaksi divisi lain tidak dikirim ke grup Upacara
+ sent.length=0;add(boss,'Pengeluaran',{date:'2026-11-21',div:'Konsumsi',cat:'Air',amount:10000});
+ assert.deepEqual(sent.map(m=>m.chat_id),['-1001111111111']);
+ // Pengurus tidak menerima pengaturan Telegram; pimpinan menerima status
+ assert.ok(!('telegram' in call(user).body.state));
+ const st=call(boss).body.state;assert.equal(st.telegram.Upacara,'-1002222222222');assert.equal(st.telegramMain,true);
+ // Melepas grup divisi
+ sent.length=0;add(boss,'Telegram',{div:'Upacara',chat:''});assert.ok(!('Upacara' in call(boss).body.state.telegram));
+ assert.ok(events.every(e=>!String(e[8]).includes('123:ABC')),'token tidak pernah masuk Sheet');
+});
+test('Tanpa token Telegram, transaksi tetap berjalan tanpa notifikasi',()=>{
+ const {sent,add}=makeScript('u'.repeat(48));
+ add(boss,'Divisi',{div:'Upacara'});
+ assert.equal(add(boss,'Pemasukan',{date:'2026-11-21',div:'Pimpinan',cat:'Punia',amount:1000}).status,200);
+ assert.equal(sent.length,0);
+});
 test('Cookie sesi memeriksa tanda tangan dan masa berlaku',()=>{process.env.SESSION_SECRET='a'.repeat(48);const t=seal({email:'a@b.id',exp:Date.now()+10000});assert.equal(unpack(t).email,'a@b.id');assert.equal(unpack(t+'x'),null);assert.equal(unpack(seal({exp:0})),null)});

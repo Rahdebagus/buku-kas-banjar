@@ -170,12 +170,14 @@ function ledgerView(){
 }
 function divisionsView(){
  const s=summary(state);
- const settings=panel('Kas pimpinan','','<div class="kaspim"><div><span class="label">Saldo siap dibagi</span><strong>'+rp(s.center)+'</strong><small>Saldo awal '+rp(state.opening)+'</small></div><div class="actions">'
+ const tgMain=state.telegramMain?'<span class="tg on">🔔 Notifikasi Telegram pimpinan aktif</span>':'<span class="tg">🔕 Telegram pimpinan belum diatur (TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di Apps Script)</span>';
+ const settings=panel('Kas pimpinan','','<div class="kaspim"><div><span class="label">Saldo siap dibagi</span><strong>'+rp(s.center)+'</strong><small>Saldo awal '+rp(state.opening)+'</small><div>'+tgMain+'</div></div><div class="actions">'
   +btn('Atur saldo awal','data-mode="Saldo awal"')+btn('＋ Tambah divisi','data-mode="Divisi"','primary')+btn('Catat pengembalian','data-mode="Pengembalian"')+btn('Buku kas','data-ledger="Pimpinan"','ghost')+'</div></div>');
  const grid=state.divisions.map(d=>{
   const members=(state.members||[]).filter(m=>m.div===d);
   return '<article class="divcard"><div class="divtop"><div><span class="label">Divisi</span><h3>'+esc(d)+'</h3></div><strong>'+rp(s.balances.get(d))+'</strong></div>'
    +'<div><span class="label">Akun pengurus</span>'+(members.length?members.map(m=>'<div class="member"><span class="avatar">'+esc(m.email[0].toUpperCase())+'</span><span class="email" title="'+esc(m.email)+'">'+esc(m.email)+'</span><button type="button" class="link danger" data-revoke="'+esc(m.email)+'">Cabut</button></div>').join(''):'<p class="empty">Belum ada akun. Tambahkan email Google pengurus.</p>')+'</div>'
+   +'<div class="tgrow">'+((state.telegram||{})[d]?'<span class="tg on">🔔 Grup Telegram terhubung</span>':'<span class="tg">🔕 Belum ada grup Telegram</span>')+'<button type="button" class="link" data-mode="Telegram" data-div="'+esc(d)+'">Atur</button></div>'
    +'<div class="actions">'+btn('⇄ Bagi dana','data-mode="Alokasi" data-div="'+esc(d)+'"')+btn('＋ Akun','data-mode="Akses" data-div="'+esc(d)+'"')+btn('Buku kas','data-ledger="'+esc(d)+'"','ghost')+'</div></article>';
  }).join('');
  const howto=panel('Cara kerja akun','','<ol class="howto"><li>Tambahkan divisi, lalu klik <b>＋ Akun</b> dan masukkan email Google pengurus divisi tersebut. Satu divisi boleh punya beberapa akun.</li><li>Selama aplikasi Google masih berstatus <i>Testing</i>, daftarkan email yang sama di Google Auth Platform → Audience → Test users.</li><li>Bagikan link aplikasi. Pengurus masuk dengan akun Google-nya dan hanya melihat dashboard, jurnal, dan buku kas divisinya.</li><li>Pengurus dapat mencatat pemasukan dan pengeluaran divisinya. Pembagian dana dan pengembalian hanya dicatat pimpinan.</li></ol>');
@@ -210,7 +212,8 @@ const FORM={
  Divisi:['Tambah divisi','Divisi baru dimulai dengan saldo nol.'],
  Akses:['Tambah akun pengurus','Pengurus masuk dengan akun Google ini dan hanya melihat kas divisinya.'],
  Cabut:['Cabut akses pengurus','Email ini tidak dapat membuka kas lagi.'],
- Bukti:['Lampirkan bukti','Disimpan otomatis ke Google Drive pimpinan, dalam folder per tahun, bulan, dan divisi.']
+ Bukti:['Lampirkan bukti','Disimpan otomatis ke Google Drive pimpinan, dalam folder per tahun, bulan, dan divisi.'],
+ Telegram:['Grup Telegram divisi','Grup ini menerima notifikasi transaksi divisi beserta sisa saldonya saja.']
 };
 const proofField=required=>field('Bukti transaksi <span class="opt">'+(required?'foto atau PDF':'foto atau PDF · opsional')+'</span>','<input type="file" name="proof" accept="image/*,application/pdf"'+(required?' required':'')+'>')+'<div id="preview" class="preview" hidden></div>';
 let attachNo=0;
@@ -225,6 +228,12 @@ function openForm(m,div,no){
  if(m==='Akses'||m==='Cabut'){
   h=field('Email akun Google','<input type="email" name="email" required autocomplete="off" placeholder="nama@gmail.com"'+(m==='Cabut'?' readonly':'')+'>');
   if(m==='Akses')h+=field('Divisi','<select name="div">'+opts(state.divisions,div)+'</select>');
+ }
+ if(m==='Telegram'){
+  const current=(state.telegram||{})[div]||'';
+  h='<input type="hidden" name="div" value="'+esc(div)+'"><div class="fixed"><span>Divisi</span>'+esc(div)+'</div>'
+   +field('Chat ID grup Telegram <span class="opt">kosongkan untuk melepas</span>','<input name="chat" autocomplete="off" placeholder="-1001234567890" value="'+esc(current)+'">')
+   +'<ol class="howto small"><li>Tambahkan bot kas ke grup Telegram divisi, lalu kirim satu pesan di grup.</li><li>Di Apps Script, jalankan fungsi <b>cekTelegram</b>. Chat ID grup muncul di Log eksekusi.</li><li>Tempel Chat ID di atas lalu simpan. Bot akan mengirim pesan konfirmasi ke grup.</li></ol>';
  }
  if(m==='Divisi')h=field('Nama divisi','<input name="div" required maxlength="80" placeholder="Misalnya Upacara">');
  if(TYPES.includes(m)){
@@ -359,8 +368,8 @@ $('dialog form').addEventListener('submit',async e=>{
  delete a.proof;delete a.custom;
  a.type=mode;a.rev=rev;
  if(mode==='Bukti')a.no=attachNo;
- else{
-  a.amount=Number(String(a.amount||'').replace(/\D/g,''));
+ if('amount' in a)a.amount=Number(String(a.amount||'').replace(/\D/g,''));
+ if(TYPES.includes(mode)){
   if(a.cat==='Lainnya')a.cat=e.target.querySelector('[name=custom]').value;
   if(!a.cat)a.cat='Setoran';
  }
@@ -372,7 +381,7 @@ $('dialog form').addEventListener('submit',async e=>{
   const r=await res.json().catch(()=>({error:res.status===413?'Berkas bukti terlalu besar.':'Gagal menyimpan.'}));
   if(!res.ok){if(res.status===401||res.status===403||res.status===409)await load();throw Error(r.error||'Gagal menyimpan.')}
   gen++;({state,rev,role}=r);render();setLive(true);$('dialog').close();
-  toast(mode==='Bukti'?'Bukti tersimpan di Google Drive':'Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase())+(file?' · bukti diunggah':''));
+  toast(mode==='Bukti'?'Bukti tersimpan di Google Drive':mode==='Telegram'?(a.chat?'Grup Telegram divisi terhubung':'Grup Telegram divisi dilepas'):'Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase())+(file?' · bukti diunggah':''));
  }catch(err){$('.error').textContent=err.message}
  finally{save.disabled=false;save.textContent='Simpan'}
 });
