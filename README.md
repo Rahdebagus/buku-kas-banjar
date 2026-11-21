@@ -66,6 +66,14 @@ Di Project → Settings → Environment Variables, isi untuk Production lalu **r
 - **Buku kas:** mutasi per akun kas dengan saldo berjalan. Tersedia juga rekap bulanan di dashboard.
 - Jurnal dan buku kas dapat diunduh sebagai CSV (terbuka di Excel/Google Sheets) atau dicetak.
 
+## 7. Bukti transaksi di Google Drive
+
+- Saat mencatat transaksi, lampirkan foto nota/kuitansi atau PDF. Bukti juga bisa dilampirkan belakangan lewat tombol **＋ Bukti** di jurnal atau buku kas. Foto otomatis diperkecil di perangkat sebelum diunggah.
+- Berkas disimpan di Drive pimpinan dengan struktur `Bukti Kas Banjar/2026/11 November/Divisi Konsumsi/JU-0012 2026-11-20 Pengeluaran Bensin Rp50000.jpg`. Kolom J "Bukti" di tab BukuKas berisi tautannya.
+- Untuk memakai folder sendiri, salin ID folder dari URL Drive (`drive.google.com/drive/folders/<ID>`) ke Script Properties dengan nama `DRIVE_FOLDER_ID`. Jika kosong, folder "Bukti Kas Banjar" dibuat otomatis saat `setup` dijalankan.
+- Folder Drive tetap privat. Bukti dibuka melalui aplikasi, dan pengurus hanya dapat membuka bukti divisinya.
+- Setelah memperbarui Code.gs, jalankan `setup` sekali di editor Apps Script untuk memberi izin akses Google Drive, lalu buat versi deployment baru.
+
 Setiap kali google/Code.gs berubah, salin ulang ke Apps Script lalu Deploy → Manage deployments → Edit → Version: New version → Deploy. Tanpa langkah ini, jenis transaksi baru seperti Pemasukan akan ditolak.
 
 ## Pengujian dan pemecahan masalah

@@ -1,5 +1,5 @@
 'use strict';
-// Baris transaksi dari server: [tanggal, jenis, divisi, nominal, kategori, keterangan, dicatat oleh, nomor bukti]
+// Baris transaksi dari server: [tanggal, jenis, divisi, nominal, kategori, keterangan, dicatat oleh, nomor bukti, ID file bukti]
 
 // Perhitungan saldo — harus identik dengan summary() di google/Code.gs
 function summary(s){
@@ -39,6 +39,7 @@ const TYPES=['Pemasukan','Pengeluaran','Alokasi','Pengembalian'];
 const TYPE_LABEL={Pemasukan:'Pemasukan',Pengeluaran:'Pengeluaran',Alokasi:'Bagi dana',Pengembalian:'Pengembalian'};
 
 let role,state,rev,mode,tab=decodeURIComponent(location.hash.slice(1))||'Dashboard',jType='Semua',jMonth='Semua',acc='*';
+const CLIP='<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l9.2-9.2a3.7 3.7 0 015.2 5.2l-9.2 9.2a1.8 1.8 0 01-2.6-2.6l8.5-8.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const isAdmin=()=>role==='pimpinan';
 const myDiv=()=>state.divisions[0];
 const scope=()=>isAdmin()?'*':myDiv();
@@ -70,11 +71,18 @@ function describe(r){
  if(t==='Pengembalian')base=(isAdmin()?'Pengembalian dari '+d:'Dikembalikan ke pimpinan')+' · '+c;
  return note?base+' — '+note:base;
 }
+// Tombol bukti: lihat jika sudah ada, lampirkan jika belum (pimpinan, atau pengurus untuk divisinya).
+const canAttach=r=>isAdmin()||r[2]===myDiv();
+function proofBtn(r){
+ if(!r||!r[7])return '';
+ if(r[8])return '<button type="button" class="clip" data-proof="'+r[7]+'" title="Lihat bukti '+bukti(r[7])+'">'+CLIP+'Bukti</button>';
+ return canAttach(r)?'<button type="button" class="clip add" data-attach="'+r[7]+'" title="Lampirkan bukti">＋ Bukti</button>':'';
+}
 const chrono=()=>state.rows.slice().sort((a,b)=>a[0].localeCompare(b[0])||(a[7]||0)-(b[7]||0));
 function ledger(a){
  const out=[];let bal=0;
  if(isAdmin()&&(a==='*'||a==='Pimpinan')&&state.opening){bal=state.opening;out.push({date:'',no:'',desc:'Saldo awal kas pimpinan',d:state.opening,k:0,bal,opening:true})}
- for(const r of chrono()){const m=move(r,a);if(!m)continue;bal+=m[0]-m[1];out.push({date:r[0],no:bukti(r[7]),desc:describe(r),d:m[0],k:m[1],bal})}
+ for(const r of chrono()){const m=move(r,a);if(!m)continue;bal+=m[0]-m[1];out.push({date:r[0],no:bukti(r[7]),desc:describe(r),d:m[0],k:m[1],bal,ref:r})}
  return out;
 }
 function recap(a){
@@ -86,7 +94,7 @@ function journalList(){
  let list=chrono();
  if(jType!=='Semua')list=list.filter(r=>r[1]===jType);
  if(jMonth!=='Semua')list=list.filter(r=>r[0].startsWith(jMonth));
- const lines=list.map(r=>({date:r[0],no:bukti(r[7]),desc:describe(r),acct:entry(r),n:r[3]}));
+ const lines=list.map(r=>({date:r[0],no:bukti(r[7]),desc:describe(r),acct:entry(r),n:r[3],ref:r}));
  if(isAdmin()&&state.opening&&jType==='Semua'&&jMonth==='Semua')lines.unshift({date:'',no:'',desc:'Saldo awal kas pimpinan',acct:['Kas Pimpinan','Modal awal kas'],n:state.opening,opening:true});
  return lines;
 }
@@ -117,7 +125,7 @@ function cards(s){
 function txTable(list){
  if(!list.length)return '<p class="empty">Belum ada transaksi.</p>';
  return '<div class="scroll"><table><thead><tr><th>Tanggal</th><th class="hide-sm">No. bukti</th><th>Keterangan</th>'+(isAdmin()?'<th class="hide-sm">Kas</th>':'')+'<th class="hide-sm">Jenis</th><th class="num">Debit</th><th class="num">Kredit</th></tr></thead><tbody>'
-  +list.map(r=>{const [d,k]=move(r,r[2])||[0,0];return '<tr><td class="nowrap">'+tgl(r[0])+'</td><td class="mono hide-sm">'+bukti(r[7])+'</td><td>'+esc(describe(r))+'</td>'+(isAdmin()?'<td class="nowrap hide-sm">'+esc(kas(r[2]))+'</td>':'')+'<td class="hide-sm"><span class="pill '+esc(r[1])+'">'+esc(TYPE_LABEL[r[1]]||r[1])+'</span></td><td class="num dr">'+num(d)+'</td><td class="num cr">'+num(k)+'</td></tr>'}).join('')
+  +list.map(r=>{const [d,k]=move(r,r[2])||[0,0];return '<tr><td class="nowrap">'+tgl(r[0])+'</td><td class="mono hide-sm">'+bukti(r[7])+'</td><td>'+esc(describe(r))+' '+proofBtn(r)+'</td>'+(isAdmin()?'<td class="nowrap hide-sm">'+esc(kas(r[2]))+'</td>':'')+'<td class="hide-sm"><span class="pill '+esc(r[1])+'">'+esc(TYPE_LABEL[r[1]]||r[1])+'</span></td><td class="num dr">'+num(d)+'</td><td class="num cr">'+num(k)+'</td></tr>'}).join('')
   +'</tbody></table></div>';
 }
 function recapPanel(a){
@@ -144,7 +152,7 @@ function journalView(){
   +btn('Unduh CSV','data-export="jurnal"','ghost')+btn('Cetak','data-print','ghost');
  if(!lines.length)return panel('Jurnal umum',tools,'<p class="empty">Belum ada transaksi untuk filter ini.</p>');
  const body='<div class="scroll"><table class="journal"><thead><tr><th>Tanggal / bukti</th><th>Akun &amp; keterangan</th><th class="num">Debit</th><th class="num">Kredit</th></tr></thead>'
-  +lines.map(l=>'<tbody class="entry'+(l.opening?' opening':'')+'"><tr><td rowspan="3" class="nowrap">'+tgl(l.date)+'<div class="mono">'+(l.no||'Saldo awal')+'</div></td><td class="acct">'+esc(l.acct[0])+'</td><td class="num">'+num(l.n)+'</td><td class="num"></td></tr><tr><td class="acct credit">'+esc(l.acct[1])+'</td><td class="num"></td><td class="num">'+num(l.n)+'</td></tr><tr><td class="memo">'+esc(l.desc)+'</td><td></td><td></td></tr></tbody>').join('')
+  +lines.map(l=>'<tbody class="entry'+(l.opening?' opening':'')+'"><tr><td rowspan="3" class="nowrap">'+tgl(l.date)+'<div class="mono">'+(l.no||'Saldo awal')+'</div></td><td class="acct">'+esc(l.acct[0])+'</td><td class="num">'+num(l.n)+'</td><td class="num"></td></tr><tr><td class="acct credit">'+esc(l.acct[1])+'</td><td class="num"></td><td class="num">'+num(l.n)+'</td></tr><tr><td class="memo">'+esc(l.desc)+' '+proofBtn(l.ref)+'</td><td></td><td></td></tr></tbody>').join('')
   +'<tfoot><tr><td colspan="2">Jumlah <span class="balanced">Seimbang</span></td><td class="num">'+rp(total)+'</td><td class="num">'+rp(total)+'</td></tr></tfoot></table></div>';
  return panel('Daftar entri',tools,'<p class="hint" style="margin-bottom:12px">Setiap transaksi dicatat dua sisi: akun yang didebit di atas, akun yang dikredit menjorok ke kanan. Total debit selalu sama dengan total kredit.</p>'+body);
 }
@@ -156,7 +164,7 @@ function ledgerView(){
  const tools=(isAdmin()?'<select id="acc" class="compact" aria-label="Akun kas">'+opts(ledgerAccounts(),acc)+'</select>':'')+btn('Unduh CSV','data-export="buku"','ghost')+btn('Cetak','data-print','ghost');
  const strip='<div class="strip"><div class="dr"><span>Total debit (masuk)</span><b>'+rp(d)+'</b></div><div class="cr"><span>Total kredit (keluar)</span><b>'+rp(k)+'</b></div><div><span>Saldo akhir</span><b>'+rp(d-k)+'</b></div></div>';
  const body=lines.length?'<div class="scroll"><table><thead><tr><th>Tanggal</th><th class="hide-sm">No. bukti</th><th>Keterangan</th><th class="num">Debit</th><th class="num">Kredit</th><th class="num">Saldo</th></tr></thead><tbody>'
-  +lines.map(l=>'<tr'+(l.opening?' class="opening"':'')+'><td class="nowrap">'+tgl(l.date)+'</td><td class="mono hide-sm">'+(l.no||'—')+'</td><td>'+esc(l.desc)+'</td><td class="num dr">'+num(l.d)+'</td><td class="num cr">'+num(l.k)+'</td><td class="num"><b>'+rp(l.bal)+'</b></td></tr>').join('')+'</tbody></table></div>':'<p class="empty">Belum ada mutasi pada akun ini.</p>';
+  +lines.map(l=>'<tr'+(l.opening?' class="opening"':'')+'><td class="nowrap">'+tgl(l.date)+'</td><td class="mono hide-sm">'+(l.no||'—')+'</td><td>'+esc(l.desc)+' '+proofBtn(l.ref)+'</td><td class="num dr">'+num(l.d)+'</td><td class="num cr">'+num(l.k)+'</td><td class="num"><b>'+rp(l.bal)+'</b></td></tr>').join('')+'</tbody></table></div>':'<p class="empty">Belum ada mutasi pada akun ini.</p>';
  const note=acc==='*'?'<p class="hint" style="margin-bottom:12px">Gabungan seluruh kas. Pembagian dana dan pengembalian tidak ditampilkan karena hanya memindahkan uang antar-kas.</p>':'';
  return panel('Buku kas · '+esc(name),tools,note+strip+body);
 }
@@ -201,10 +209,19 @@ const FORM={
  'Saldo awal':['Atur saldo awal','Saldo Kas Pimpinan sebelum transaksi pertama dicatat.'],
  Divisi:['Tambah divisi','Divisi baru dimulai dengan saldo nol.'],
  Akses:['Tambah akun pengurus','Pengurus masuk dengan akun Google ini dan hanya melihat kas divisinya.'],
- Cabut:['Cabut akses pengurus','Email ini tidak dapat membuka kas lagi.']
+ Cabut:['Cabut akses pengurus','Email ini tidak dapat membuka kas lagi.'],
+ Bukti:['Lampirkan bukti','Disimpan otomatis ke Google Drive pimpinan, dalam folder per tahun, bulan, dan divisi.']
 };
-function openForm(m,div){
- mode=m;let h='';
+const proofField=required=>field('Bukti transaksi <span class="opt">'+(required?'foto atau PDF':'foto atau PDF · opsional')+'</span>','<input type="file" name="proof" accept="image/*,application/pdf"'+(required?' required':'')+'>')+'<div id="preview" class="preview" hidden></div>';
+let attachNo=0;
+function openForm(m,div,no){
+ mode=m;attachNo=0;let h='';
+ if(m==='Bukti'){
+  const r=state.rows.find(x=>x[7]===no);if(!r)return toast('Transaksi tidak ditemukan.',true);
+  attachNo=no;
+  h='<div class="fixed"><span>'+bukti(no)+' · '+tgl(r[0])+'</span>'+rp(r[3])+'</div><p class="hint" style="margin-top:8px">'+esc(describe(r))+'</p>'
+   +(r[8]?'<p class="hint">Transaksi ini sudah punya bukti. Berkas baru akan menggantikannya; berkas lama tetap tersimpan di Drive.</p>':'')+proofField(true);
+ }
  if(m==='Akses'||m==='Cabut'){
   h=field('Email akun Google','<input type="email" name="email" required autocomplete="off" placeholder="nama@gmail.com"'+(m==='Cabut'?' readonly':'')+'>');
   if(m==='Akses')h+=field('Divisi','<select name="div">'+opts(state.divisions,div)+'</select>');
@@ -221,7 +238,8 @@ function openForm(m,div){
    +'<div hidden id="custom">'+field('Nama kategori','<input name="custom" maxlength="80">')+'</div>'
    +'<div class="two">'+field('Tanggal','<input type="date" name="date" required value="'+today()+'">')+field('Nominal (Rp)','<input name="amount" inputmode="numeric" autocomplete="off" required placeholder="0">')+'</div>'
    +'<p class="hint" id="hint"></p>'
-   +field('Keterangan (opsional)','<input name="note" maxlength="120" placeholder="Misalnya pembayaran listrik balai banjar">');
+   +field('Keterangan (opsional)','<input name="note" maxlength="120" placeholder="Misalnya pembayaran listrik balai banjar">')
+   +proofField(false);
  }
  if(m==='Saldo awal')h+=field('Nominal (Rp)','<input name="amount" inputmode="numeric" autocomplete="off" required value="'+(num(state.opening)||'0')+'">');
  $('#ft').textContent=FORM[m][0];$('#fs').textContent=FORM[m][1];
@@ -233,6 +251,53 @@ function updateHint(){
  const s=summary(state),div=$('dialog [name=div]')?.value,bal=d=>d==='Pimpinan'?s.center:s.balances.get(d)||0;
  h.textContent=mode==='Alokasi'?'Saldo Kas Pimpinan: '+rp(s.center):mode==='Pengembalian'?'Saldo '+kas(div)+': '+rp(bal(div)):mode==='Pengeluaran'?'Saldo tersedia: '+rp(bal(div)):'Saldo '+kas(div)+' saat ini: '+rp(bal(div));
 }
+
+// ---------- Bukti: kompres, unggah, lihat ----------
+const PROOF_MAX=2500000; // byte, setelah kompresi; batas aman permintaan Vercel (4,5 MB setelah base64)
+const toBase64=blob=>new Promise((ok,fail)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>fail(Error('Berkas bukti tidak dapat dibaca.'));r.readAsDataURL(blob)});
+async function prepareProof(file){
+ if(!file||!file.size)return null;
+ if(file.type.startsWith('image/')){
+  try{ // perkecil foto ke maks. 1600 px dan JPEG agar ringan
+   const img=await createImageBitmap(file),scale=Math.min(1,1600/Math.max(img.width,img.height));
+   const c=document.createElement('canvas');c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);
+   const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
+   const blob=await new Promise(ok=>c.toBlob(ok,'image/jpeg',0.82));
+   if(blob&&blob.size<=PROOF_MAX)return {name:file.name.replace(/\.[^.]*$/,'')+'.jpg',type:'image/jpeg',data:await toBase64(blob)};
+  }catch{/* format yang tidak bisa dibaca browser, kirim apa adanya jika didukung */}
+ }
+ if(!/^(image\/(jpeg|png|webp)|application\/pdf)$/.test(file.type))throw Error('Format bukti harus foto (JPG, PNG, WEBP) atau PDF.');
+ if(file.size>PROOF_MAX)throw Error('Ukuran bukti maksimal 2,5 MB. Perkecil berkas PDF atau kirim sebagai foto.');
+ return {name:file.name,type:file.type,data:await toBase64(file)};
+}
+let previewUrl='';
+function showPreview(input){
+ const box=$('#preview'),file=input.files&&input.files[0];
+ if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=''}
+ if(!box)return;if(!file){box.hidden=true;return}
+ box.hidden=false;
+ if(file.type.startsWith('image/')){previewUrl=URL.createObjectURL(file);box.innerHTML='<img src="'+previewUrl+'" alt="Pratinjau bukti"><span>'+esc(file.name)+'</span>'}
+ else box.innerHTML='<span class="doc">PDF</span><span>'+esc(file.name)+' · '+Math.ceil(file.size/1024).toLocaleString('id-ID')+' KB</span>';
+}
+let viewerUrl='';
+async function openProof(no){
+ const v=$('#viewer');
+ $('#vt').textContent='Bukti '+bukti(no);
+ const r=state.rows.find(x=>x[7]===no);$('#vs').textContent=r?describe(r)+' · '+rp(r[3]):'';
+ $('#vbody').innerHTML='<p class="empty">Memuat bukti dari Google Drive…</p>';$('#vlinks').innerHTML='';
+ v.showModal();
+ try{
+  const res=await fetch('/api/kas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'Lihat bukti',no})}),d=await res.json();
+  if(!res.ok)throw Error(d.error||'Bukti tidak dapat dibuka.');
+  const bytes=Uint8Array.from(atob(d.data),c=>c.charCodeAt(0));
+  if(viewerUrl)URL.revokeObjectURL(viewerUrl);
+  viewerUrl=URL.createObjectURL(new Blob([bytes],{type:d.mime}));
+  $('#vbody').innerHTML=d.mime==='application/pdf'?'<iframe src="'+viewerUrl+'" title="Bukti PDF"></iframe>':'<img src="'+viewerUrl+'" alt="Bukti transaksi">';
+  $('#vlinks').innerHTML='<a class="btn" href="'+viewerUrl+'" download="'+esc(d.name)+'">Unduh</a>'+(d.url?'<a class="btn ghost" href="'+esc(d.url)+'" target="_blank" rel="noopener">Buka di Google Drive</a>':'')
+   +(r&&canAttach(r)?btn('Ganti bukti','data-attach="'+no+'"','ghost'):'');
+ }catch(err){$('#vbody').innerHTML='<p class="error">'+esc(err.message)+'</p>'}
+}
+
 let toastTimer;
 function toast(msg,bad){const t=$('#toast');t.textContent=msg;t.className='show'+(bad?' bad':'');clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.className=''},3200)}
 
@@ -242,15 +307,17 @@ function download(name,rows){
  const blob=new Blob(['﻿'+rows.map(r=>r.map(cell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 }
+// Pimpinan mendapat tautan Drive; pengurus hanya keterangan ada/tidak (folder Drive tetap privat).
+const proofCell=r=>!r||!r[8]?'':isAdmin()?'https://drive.google.com/file/d/'+r[8]+'/view':'Ada';
 function exportCsv(kind){
  const stamp=today();
  if(kind==='jurnal'){
-  const rows=[['Tanggal','No. bukti','Akun','Debit','Kredit','Keterangan']];
-  for(const l of journalList()){rows.push([l.date,l.no,l.acct[0],l.n,'',l.desc]);rows.push([l.date,l.no,l.acct[1],'',l.n,''])}
+  const rows=[['Tanggal','No. bukti','Akun','Debit','Kredit','Keterangan','Bukti']];
+  for(const l of journalList()){rows.push([l.date,l.no,l.acct[0],l.n,'',l.desc,proofCell(l.ref)]);rows.push([l.date,l.no,l.acct[1],'',l.n,'',''])}
   return download('jurnal-umum-'+stamp+'.csv',rows);
  }
- const rows=[['Tanggal','No. bukti','Keterangan','Debit','Kredit','Saldo']];
- for(const l of ledger(acc))rows.push([l.date,l.no,l.desc,l.d||'',l.k||'',l.bal]);
+ const rows=[['Tanggal','No. bukti','Keterangan','Debit','Kredit','Saldo','Bukti']];
+ for(const l of ledger(acc))rows.push([l.date,l.no,l.desc,l.d||'',l.k||'',l.bal,proofCell(l.ref)]);
  download('buku-kas-'+(acc==='*'?'semua':acc).toLowerCase().replace(/[^a-z0-9]+/g,'-')+'-'+stamp+'.csv',rows);
 }
 
@@ -266,8 +333,12 @@ document.addEventListener('click',e=>{
  if('logout' in d)$('#logout').requestSubmit();
  if('reload' in d)load();
  if('sync' in d)refresh(true);
+ if(d.proof)openProof(Number(d.proof));
+ if(d.attach){$('#viewer').open&&$('#viewer').close();openForm('Bukti',null,Number(d.attach))}
  if(b.id==='close')$('dialog').close();
+ if(b.id==='vclose')$('#viewer').close();
 });
+$('#viewer').addEventListener('close',()=>{if(viewerUrl){URL.revokeObjectURL(viewerUrl);viewerUrl=''}$('#vbody').innerHTML=''});
 document.addEventListener('change',e=>{
  const t=e.target;
  if(t.id==='jtype'){jType=t.value;render()}
@@ -275,6 +346,7 @@ document.addEventListener('change',e=>{
  if(t.id==='acc'){acc=t.value;render()}
  if(t.name==='cat'&&t.closest('dialog')){const other=t.value==='Lainnya';$('#custom').hidden=!other;$('[name=custom]').required=other}
  if(t.name==='div'&&t.closest('dialog'))updateHint();
+ if(t.name==='proof')showPreview(t);
 });
 document.addEventListener('input',e=>{
  const t=e.target;if(t.name!=='amount')return;
@@ -282,18 +354,27 @@ document.addEventListener('input',e=>{
 });
 $('dialog form').addEventListener('submit',async e=>{
  e.preventDefault();
+ const input=e.target.querySelector('[name=proof]'),file=input&&input.files&&input.files[0];
  const a=Object.fromEntries(new FormData(e.target));
- a.type=mode;a.rev=rev;a.amount=Number(String(a.amount||'').replace(/\D/g,''));
- if(a.cat==='Lainnya')a.cat=a.custom;
- if(!a.cat)a.cat='Setoran';
- delete a.custom;
- $('#save').disabled=true;
+ delete a.proof;delete a.custom;
+ a.type=mode;a.rev=rev;
+ if(mode==='Bukti')a.no=attachNo;
+ else{
+  a.amount=Number(String(a.amount||'').replace(/\D/g,''));
+  if(a.cat==='Lainnya')a.cat=e.target.querySelector('[name=custom]').value;
+  if(!a.cat)a.cat='Setoran';
+ }
+ const save=$('#save');save.disabled=true;
  try{
-  const res=await fetch('/api/kas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)}),r=await res.json();
+  if(file){save.textContent='Mengunggah bukti…';a.file=await prepareProof(file)}
+  else save.textContent='Menyimpan…';
+  const res=await fetch('/api/kas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)});
+  const r=await res.json().catch(()=>({error:res.status===413?'Berkas bukti terlalu besar.':'Gagal menyimpan.'}));
   if(!res.ok){if(res.status===401||res.status===403||res.status===409)await load();throw Error(r.error||'Gagal menyimpan.')}
-  gen++;({state,rev,role}=r);render();setLive(true);$('dialog').close();toast('Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase()));
+  gen++;({state,rev,role}=r);render();setLive(true);$('dialog').close();
+  toast(mode==='Bukti'?'Bukti tersimpan di Google Drive':'Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase())+(file?' · bukti diunggah':''));
  }catch(err){$('.error').textContent=err.message}
- finally{$('#save').disabled=false}
+ finally{save.disabled=false;save.textContent='Simpan'}
 });
 
 // ---------- Sinkronisasi otomatis ----------

@@ -166,6 +166,25 @@ select.compact{width:auto;padding:8px 10px;font-size:13.5px}
 .error{color:var(--cr);font-size:14px;min-height:20px;margin-top:12px}
 .dfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}
 
+/* Proof (bukti) */
+.clip{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;margin-left:4px;border-radius:999px;font-size:12px;font-weight:700;background:var(--gold-soft);border:1px solid #e6d3a6;color:var(--gold-ink);vertical-align:1px}
+.clip:hover{border-color:var(--gold)}
+.clip.add{background:transparent;border-style:dashed;color:var(--muted);font-weight:600}
+.clip.add:hover{color:var(--gold-ink)}
+.opt{font-weight:500;color:var(--muted);font-size:12px}
+input[type=file]{padding:9px;background:var(--soft);cursor:pointer}
+input[type=file]::file-selector-button{font:600 13px var(--sans);border:1px solid var(--line);background:var(--paper);color:var(--emerald);border-radius:8px;padding:7px 12px;margin-right:10px;cursor:pointer}
+.preview{display:flex;align-items:center;gap:12px;margin-top:10px;padding:10px;border:1px solid var(--line-2);border-radius:12px;background:var(--soft);font-size:13px;color:var(--ink-2);min-width:0}
+.preview img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex:none}
+.preview span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preview .doc{display:grid;place-items:center;width:52px;height:64px;border-radius:8px;background:var(--cr-soft);color:var(--cr);font-weight:700;flex:none}
+#viewer{width:min(920px,96vw);padding:22px}
+.vhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+.vbody{display:grid;place-items:center;min-height:200px;background:var(--soft);border:1px solid var(--line-2);border-radius:14px;overflow:hidden}
+.vbody img{display:block;max-width:100%;max-height:70vh;object-fit:contain}
+.vbody iframe{width:100%;height:70vh;border:0;background:#fff}
+.vlinks{margin-top:14px;justify-content:flex-end}
+
 /* Live sync indicator */
 .sync{border:0;background:none;padding:0;margin-top:10px;font:500 12.5px var(--sans);color:var(--muted);gap:8px;cursor:pointer}
 .sync:hover{color:var(--ink)}
@@ -199,7 +218,7 @@ select.compact{width:auto;padding:8px 10px;font-size:13.5px}
  table{font-size:13px}
 }
 @media print{
- header.top,.heading .actions,.tools,#toast,dialog,.sync{display:none!important}
+ header.top,.heading .actions,.tools,#toast,dialog,.sync,.clip.add{display:none!important}
  body{background:#fff}
  main{padding:0;max-width:none}
  .panel,.card{box-shadow:none;border-color:#bbb;break-inside:avoid}
@@ -235,6 +254,11 @@ select.compact{width:auto;padding:8px 10px;font-size:13.5px}
   <div class="error" role="alert"></div>
   <div class="dfoot"><button type="button" id="close" class="ghost">Batal</button><button class="primary" id="save">Simpan</button></div>
  </form>
+</dialog>
+<dialog id="viewer" aria-labelledby="vt">
+ <div class="vhead"><div><h2 id="vt"></h2><p id="vs" class="hint"></p></div><button type="button" id="vclose" class="ghost">Tutup</button></div>
+ <div id="vbody" class="vbody"></div>
+ <div id="vlinks" class="actions vlinks"></div>
 </dialog>
 <script src="/app.js"></script>
 </body>
