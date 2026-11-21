@@ -141,6 +141,31 @@ test('Telegram: grup pimpinan menerima semua saldo, grup divisi hanya saldonya s
  sent.length=0;add(boss,'Telegram',{div:'Upacara',chat:''});assert.ok(!('Upacara' in call(boss).body.state.telegram));
  assert.ok(events.every(e=>!String(e[8]).includes('123:ABC')),'token tidak pernah masuk Sheet');
 });
+test('Nama tampilan menggantikan email di Telegram dan aplikasi',()=>{
+ const {sent,call,add}=makeScript('n'.repeat(48),{TELEGRAM_BOT_TOKEN:'123:ABC',TELEGRAM_CHAT_ID:'-1001111111111'});
+ add(boss,'Divisi',{div:'Upacara'});
+ add(boss,'Alokasi',{date:'2026-11-06',div:'Upacara',cat:'Saldo awal',amount:0});
+ add(boss,'Pemasukan',{date:'2026-11-06',div:'Pimpinan',cat:'Punia',amount:500000});
+ assert.match(sent.at(-1).text,/oleh Pimpinan/,'nama bawaan pimpinan');
+ assert.equal(add(boss,'Profil',{name:'Ketua MTB'}).status,200);
+ assert.equal(add(boss,'Profil',{name:'  '}).status,400);
+ assert.equal(add(boss,'Akses',{email:user,div:'Upacara',name:'Made Upacara'}).status,200);
+ assert.match(sent.at(-1).text,/Made Upacara → Divisi Upacara/);
+ assert.equal(add(user,'Profil',{name:'Saya Ketua'}).status,403,'pengurus tidak boleh mengubah nama pimpinan');
+ sent.length=0;
+ add(boss,'Alokasi',{date:'2026-11-07',div:'Upacara',cat:'Tambahan dana',amount:100000});
+ assert.match(sent[0].text,/oleh Ketua MTB/);
+ sent.length=0;
+ assert.equal(add(user,'Pengeluaran',{date:'2026-11-08',div:'Upacara',cat:'Bensin',amount:20000}).status,200);
+ assert.match(sent[0].text,/oleh Made Upacara/);
+ assert.ok(sent.every(m=>!m.text.includes('@example.com')&&!m.text.includes('***')),'email tidak tampil sama sekali');
+ // Respons aplikasi membawa nama
+ assert.equal(call(user).body.name,'Made Upacara');assert.equal(call(boss).body.name,'Ketua MTB');
+ assert.equal(call(boss).body.state.members[0].name,'Made Upacara');
+ // Ubah nama lewat Akses ulang, lalu cabut memakai nama
+ add(boss,'Akses',{email:user,div:'Upacara',name:'Bli Made'});assert.equal(call(user).body.name,'Bli Made');
+ sent.length=0;add(boss,'Cabut',{email:user});assert.match(sent[0].text,/dicabut[\s\S]*Bli Made/);
+});
 test('Tanpa token Telegram, transaksi tetap berjalan tanpa notifikasi',()=>{
  const {sent,add}=makeScript('u'.repeat(48));
  add(boss,'Divisi',{div:'Upacara'});

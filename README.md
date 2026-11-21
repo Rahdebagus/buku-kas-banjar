@@ -84,6 +84,8 @@ Setiap transaksi dan perubahan pengaturan dikirim ke Telegram beserta sisa saldo
 4. Tambahkan `TELEGRAM_CHAT_ID` berisi Chat ID grup pimpinan (biasanya diawali `-100`). Jalankan `cekTelegram` sekali lagi untuk mengirim pesan uji.
 5. Opsional: untuk grup tiap divisi, tambahkan bot ke grup divisi, kirim pesan, jalankan `cekTelegram`, lalu di aplikasi buka **Divisi & akun → Atur** pada kartu divisi dan tempel Chat ID-nya.
 
+Pencatat ditampilkan dengan nama, bukan email. Nama pimpinan diatur di **Divisi & akun → Kas pimpinan → Ubah**, nama pengurus diisi saat menambah akun atau lewat tombol **Ubah** pada akun tersebut. Akun tanpa nama tampil dengan email yang disamarkan.
+
 Grup pimpinan menerima semua notifikasi dengan saldo Kas Pimpinan, setiap divisi, dan total kas. Grup divisi hanya menerima transaksi divisinya dan sisa saldo divisinya. Token bot hanya disimpan di Script Properties. Jika Telegram gagal, transaksi tetap tersimpan.
 
 Setiap kali google/Code.gs berubah, salin ulang ke Apps Script lalu Deploy → Manage deployments → Edit → Version: New version → Deploy. Tanpa langkah ini, jenis transaksi baru seperti Pemasukan akan ditolak.

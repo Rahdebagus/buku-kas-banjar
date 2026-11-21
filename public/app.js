@@ -38,7 +38,7 @@ const RETURNS=['Sisa dana','Pelunasan kas bon','Lainnya'];
 const TYPES=['Pemasukan','Pengeluaran','Alokasi','Pengembalian'];
 const TYPE_LABEL={Pemasukan:'Pemasukan',Pengeluaran:'Pengeluaran',Alokasi:'Bagi dana',Pengembalian:'Pengembalian'};
 
-let role,state,rev,mode,tab=decodeURIComponent(location.hash.slice(1))||'Dashboard',jType='Semua',jMonth='Semua',acc='*';
+let me='',role,state,rev,mode,tab=decodeURIComponent(location.hash.slice(1))||'Dashboard',jType='Semua',jMonth='Semua',acc='*';
 const CLIP='<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l9.2-9.2a3.7 3.7 0 015.2 5.2l-9.2 9.2a1.8 1.8 0 01-2.6-2.6l8.5-8.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const isAdmin=()=>role==='pimpinan';
 const myDiv=()=>state.divisions[0];
@@ -171,12 +171,12 @@ function ledgerView(){
 function divisionsView(){
  const s=summary(state);
  const tgMain=state.telegramMain?'<span class="tg on">🔔 Notifikasi Telegram pimpinan aktif</span>':'<span class="tg">🔕 Telegram pimpinan belum diatur (TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di Apps Script)</span>';
- const settings=panel('Kas pimpinan','','<div class="kaspim"><div><span class="label">Saldo siap dibagi</span><strong>'+rp(s.center)+'</strong><small>Saldo awal '+rp(state.opening)+'</small><div>'+tgMain+'</div></div><div class="actions">'
+ const settings=panel('Kas pimpinan','','<div class="kaspim"><div><span class="label">Saldo siap dibagi</span><strong>'+rp(s.center)+'</strong><small>Saldo awal '+rp(state.opening)+'</small><div class="ownername">Nama pimpinan: <b>'+esc(state.ownerName||'Pimpinan')+'</b> <button type="button" class="link" data-mode="Profil">Ubah</button></div><div>'+tgMain+'</div></div><div class="actions">'
   +btn('Atur saldo awal','data-mode="Saldo awal"')+btn('＋ Tambah divisi','data-mode="Divisi"','primary')+btn('Catat pengembalian','data-mode="Pengembalian"')+btn('Buku kas','data-ledger="Pimpinan"','ghost')+'</div></div>');
  const grid=state.divisions.map(d=>{
   const members=(state.members||[]).filter(m=>m.div===d);
   return '<article class="divcard"><div class="divtop"><div><span class="label">Divisi</span><h3>'+esc(d)+'</h3></div><strong>'+rp(s.balances.get(d))+'</strong></div>'
-   +'<div><span class="label">Akun pengurus</span>'+(members.length?members.map(m=>'<div class="member"><span class="avatar">'+esc(m.email[0].toUpperCase())+'</span><span class="email" title="'+esc(m.email)+'">'+esc(m.email)+'</span><button type="button" class="link danger" data-revoke="'+esc(m.email)+'">Cabut</button></div>').join(''):'<p class="empty">Belum ada akun. Tambahkan email Google pengurus.</p>')+'</div>'
+   +'<div><span class="label">Akun pengurus</span>'+(members.length?members.map(m=>'<div class="member"><span class="avatar">'+esc((m.name||m.email)[0].toUpperCase())+'</span><span class="email" title="'+esc(m.email)+'">'+(m.name?'<b>'+esc(m.name)+'</b><small>'+esc(m.email)+'</small>':esc(m.email)+'<small class="warn">Belum ada nama</small>')+'</span><button type="button" class="link" data-mode="Akses" data-div="'+esc(d)+'" data-email="'+esc(m.email)+'">Ubah</button><button type="button" class="link danger" data-revoke="'+esc(m.email)+'">Cabut</button></div>').join(''):'<p class="empty">Belum ada akun. Tambahkan email Google pengurus.</p>')+'</div>'
    +'<div class="tgrow">'+((state.telegram||{})[d]?'<span class="tg on">🔔 Grup Telegram terhubung</span>':'<span class="tg">🔕 Belum ada grup Telegram</span>')+'<button type="button" class="link" data-mode="Telegram" data-div="'+esc(d)+'">Atur</button></div>'
    +'<div class="actions">'+btn('⇄ Bagi dana','data-mode="Alokasi" data-div="'+esc(d)+'"')+btn('＋ Akun','data-mode="Akses" data-div="'+esc(d)+'"')+btn('Buku kas','data-ledger="'+esc(d)+'"','ghost')+'</div></article>';
  }).join('');
@@ -189,7 +189,7 @@ function render(){
  if(!tabs.includes(tab))tab='Dashboard';
  history.replaceState(null,'',tab==='Dashboard'?location.pathname:'#'+encodeURIComponent(tab));
  $('nav').innerHTML=tabs.map(t=>'<button type="button" data-tab="'+t+'" class="'+(t===tab?'on':'')+'">'+(t==='Divisi'?'Divisi &amp; akun':t)+'</button>').join('');
- $('#chip').innerHTML='<span class="role">'+(isAdmin()?'Pimpinan':'Pengurus')+'</span>'+esc(isAdmin()?'Kas pimpinan':'Divisi '+myDiv());
+ $('#chip').innerHTML='<span class="role">'+(isAdmin()?'Pimpinan':'Pengurus · '+esc(myDiv()))+'</span>'+esc(me||(isAdmin()?'Kas pimpinan':'Divisi '+myDiv()));
  $('#eyebrow').textContent=isAdmin()?'Pimpinan banjar':'Divisi '+myDiv();
  $('#title').textContent={Dashboard:isAdmin()?'Ringkasan kas':'Kas divisi '+myDiv(),Jurnal:'Jurnal umum','Buku kas':'Buku kas',Divisi:'Divisi & akun'}[tab];
  $('#quick').innerHTML=btn('＋ Pemasukan','data-mode="Pemasukan"','gold')+btn('− Pengeluaran','data-mode="Pengeluaran"','primary')+(isAdmin()?btn('⇄ Bagi dana','data-mode="Alokasi"'):'');
@@ -210,7 +210,8 @@ const FORM={
  Pengembalian:['Catat pengembalian','Sisa dana divisi dikembalikan ke Kas Pimpinan.'],
  'Saldo awal':['Atur saldo awal','Saldo Kas Pimpinan sebelum transaksi pertama dicatat.'],
  Divisi:['Tambah divisi','Divisi baru dimulai dengan saldo nol.'],
- Akses:['Tambah akun pengurus','Pengurus masuk dengan akun Google ini dan hanya melihat kas divisinya.'],
+ Akses:['Akun pengurus','Pengurus masuk dengan akun Google ini dan hanya melihat kas divisinya. Nama tampil di aplikasi dan Telegram, email tidak.'],
+ Profil:['Nama pimpinan','Nama ini tampil di aplikasi dan notifikasi Telegram sebagai pencatat.'],
  Cabut:['Cabut akses pengurus','Email ini tidak dapat membuka kas lagi.'],
  Bukti:['Lampirkan bukti','Disimpan otomatis ke Google Drive pimpinan, dalam folder per tahun, bulan, dan divisi.'],
  Telegram:['Grup Telegram divisi','Grup ini menerima notifikasi transaksi divisi beserta sisa saldonya saja.']
@@ -225,10 +226,14 @@ function openForm(m,div,no){
   h='<div class="fixed"><span>'+bukti(no)+' · '+tgl(r[0])+'</span>'+rp(r[3])+'</div><p class="hint" style="margin-top:8px">'+esc(describe(r))+'</p>'
    +(r[8]?'<p class="hint">Transaksi ini sudah punya bukti. Berkas baru akan menggantikannya; berkas lama tetap tersimpan di Drive.</p>':'')+proofField(true);
  }
- if(m==='Akses'||m==='Cabut'){
-  h=field('Email akun Google','<input type="email" name="email" required autocomplete="off" placeholder="nama@gmail.com"'+(m==='Cabut'?' readonly':'')+'>');
-  if(m==='Akses')h+=field('Divisi','<select name="div">'+opts(state.divisions,div)+'</select>');
+ if(m==='Akses'){
+  const existing=(state.members||[]).find(x=>x.email===no);
+  h=field('Nama pengurus','<input name="name" required maxlength="60" autocomplete="off" placeholder="Misalnya Made Upacara" value="'+esc(existing?existing.name:'')+'">')
+   +field('Email akun Google','<input type="email" name="email" required autocomplete="off" placeholder="nama@gmail.com" value="'+esc(existing?existing.email:'')+'"'+(existing?' readonly':'')+'>')
+   +field('Divisi','<select name="div">'+opts(state.divisions,existing?existing.div:div)+'</select>');
  }
+ if(m==='Cabut')h=field('Email akun Google','<input type="email" name="email" required readonly>');
+ if(m==='Profil')h=field('Nama pimpinan','<input name="name" required maxlength="60" autocomplete="off" placeholder="Misalnya Ketua MTB" value="'+esc(state.ownerName||'')+'">');
  if(m==='Telegram'){
   const current=(state.telegram||{})[div]||'';
   h='<input type="hidden" name="div" value="'+esc(div)+'"><div class="fixed"><span>Divisi</span>'+esc(div)+'</div>'
@@ -334,7 +339,7 @@ function exportCsv(kind){
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b)return;const d=b.dataset;
  if(d.tab){tab=d.tab;render();window.scrollTo({top:0,behavior:'smooth'})}
- if(d.mode)openForm(d.mode,d.div);
+ if(d.mode)openForm(d.mode,d.div,d.email);
  if(d.revoke){openForm('Cabut');$('dialog [name=email]').value=d.revoke}
  if(d.ledger){acc=d.ledger;tab='Buku kas';render();window.scrollTo({top:0,behavior:'smooth'})}
  if(d.export)exportCsv(d.export);
@@ -380,8 +385,8 @@ $('dialog form').addEventListener('submit',async e=>{
   const res=await fetch('/api/kas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)});
   const r=await res.json().catch(()=>({error:res.status===413?'Berkas bukti terlalu besar.':'Gagal menyimpan.'}));
   if(!res.ok){if(res.status===401||res.status===403||res.status===409)await load();throw Error(r.error||'Gagal menyimpan.')}
-  gen++;({state,rev,role}=r);render();setLive(true);$('dialog').close();
-  toast(mode==='Bukti'?'Bukti tersimpan di Google Drive':mode==='Telegram'?(a.chat?'Grup Telegram divisi terhubung':'Grup Telegram divisi dilepas'):'Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase())+(file?' · bukti diunggah':''));
+  gen++;({state,rev,role,name:me}=r);render();setLive(true);$('dialog').close();
+  toast(mode==='Profil'?'Nama pimpinan disimpan':mode==='Akses'?'Akun '+(a.name||'pengurus')+' disimpan':mode==='Bukti'?'Bukti tersimpan di Google Drive':mode==='Telegram'?(a.chat?'Grup Telegram divisi terhubung':'Grup Telegram divisi dilepas'):'Tersimpan · '+FORM[mode][0].replace(/^(Catat|Atur|Tambah|Cabut) /,'').replace(/^./,c=>c.toUpperCase())+(file?' · bukti diunggah':''));
  }catch(err){$('.error').textContent=err.message}
  finally{save.disabled=false;save.textContent='Simpan'}
 });
@@ -407,7 +412,7 @@ async function refresh(force){
   if(!res.ok)throw Error(r.error);
   if(r.rev!==rev||r.role!==role){
    if($('dialog').open)return; // tunggu formulir ditutup
-   ({state,rev,role}=r);gen++;render();toast('Data terbaru dimuat');
+   ({state,rev,role,name:me}=r);gen++;render();toast('Data terbaru dimuat');
   }
   setLive(true);
  }catch{setLive(false)}
@@ -428,7 +433,7 @@ async function load(){
   if(res.status===401)return showGate('login','Masuk dengan akun Google yang telah didaftarkan oleh pimpinan. Setiap divisi hanya melihat kasnya sendiri.');
   if(res.status===403){$('#logout').hidden=false;return showGate('denied',r.error||'Email Anda belum terdaftar. Hubungi pimpinan.')}
   if(!res.ok)throw Error(r.error);
-  ({state,rev,role}=r);$('#logout').hidden=false;
+  ({state,rev,role,name:me}=r);$('#logout').hidden=false;
   if(!isAdmin())acc=myDiv();
   render();setLive(true);startPolling();
  }catch(err){showGate('error',err.message||'Gagal memuat data kas.')}
