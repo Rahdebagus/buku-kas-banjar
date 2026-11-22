@@ -60,7 +60,7 @@ Di Project → Settings → Environment Variables, isi untuk Production lalu **r
 
 ## 6. Pembukuan: debit, kredit, dan jurnal
 
-- **Akun:** pimpinan memakai email OWNER_EMAIL. Setiap divisi memakai satu atau beberapa email Google yang didaftarkan di Divisi & akun. Pengurus hanya menerima data divisinya.
+- **Akun:** pimpinan utama memakai email OWNER_EMAIL. Pimpinan utama dapat menambah pimpinan lain lewat **Divisi & akun → Akun pimpinan → ＋ Pimpinan**. Pimpinan tambahan berakses penuh atas kas, divisi, dan akun pengurus, tetapi hanya pimpinan utama yang dapat menambah/mencabut pimpinan dan mengubah nama pimpinan utama. Selama aplikasi Google berstatus Testing, daftarkan juga email pimpinan tambahan sebagai Test users. Setiap divisi memakai satu atau beberapa email Google yang didaftarkan di Divisi & akun. Pengurus hanya menerima data divisinya.
 - **Jenis transaksi:** Pemasukan (kas didebit), Pengeluaran (kas dikredit), Bagi dana (Kas Pimpinan → kas divisi), dan Pengembalian (kas divisi → Kas Pimpinan). Pengurus dapat mencatat pemasukan dan pengeluaran divisinya sendiri.
 - **Jurnal umum:** setiap transaksi tampil sebagai pasangan debit/kredit dengan nomor bukti JU-0001 dan seterusnya. Total debit selalu sama dengan total kredit.
 - **Buku kas:** mutasi per akun kas dengan saldo berjalan. Tersedia juga rekap bulanan di dashboard.

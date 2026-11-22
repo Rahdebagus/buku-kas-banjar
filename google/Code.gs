@@ -80,8 +80,8 @@ function notifications(state,a,row,who){
  detail=[juCode(row[7])+' · '+rupiah(row[3])+' — '+tgEsc(row[4]),'oleh '+tgEsc(who)];
  }else if(a.type==='Saldo awal'){head='🏦 <b>Saldo awal diubah</b>';detail=['Saldo awal Kas Pimpinan: <b>'+rupiah(state.opening)+'</b>']}
  else if(a.type==='Divisi'){head='🏷️ <b>Divisi baru</b> · '+tgEsc(a.div)}
- else if(a.type==='Akses'){head='👤 <b>Akun pengurus diperbarui</b>';detail=[tgEsc(a.name||maskEmail(a.email))+' → Divisi '+tgEsc(a.div)]}
- else if(a.type==='Cabut'){head='🚫 <b>Akses pengurus dicabut</b>';detail=[tgEsc(a.name||maskEmail(a.email))]}
+ else if(a.type==='Akses'){head='👤 <b>Akun '+(a.div==='Pimpinan'?'pimpinan':'pengurus')+' diperbarui</b>';detail=[tgEsc(a.name||maskEmail(a.email))+' → '+(a.div==='Pimpinan'?'Pimpinan':'Divisi '+tgEsc(a.div))]}
+ else if(a.type==='Cabut'){head='🚫 <b>Akses dicabut</b>';detail=[tgEsc(a.name||maskEmail(a.email))]}
  else if(a.type==='Profil'){head='✏️ <b>Nama pimpinan</b> · '+tgEsc(a.name)}
  else if(a.type==='Telegram'){head='🔔 <b>Telegram divisi</b> · '+tgEsc(a.div);detail=[a.chat?'Grup divisi terhubung.':'Grup divisi dilepas.']}
  else return [];
@@ -131,11 +131,50 @@ function setup(){
  SpreadsheetApp.flush();
  }finally{lock.releaseLock()}
 }
+// Jalankan dari editor Apps Script untuk mengosongkan kas (transaksi, saldo awal, bukti).
+// Yang dipertahankan hanya baris pengaturan yang masih berlaku: semua divisi, akses terakhir tiap pengurus aktif,
+// nama pimpinan terakhir, dan Telegram divisi yang masih terhubung. Riwayat Cabut/akses lama ikut dibersihkan.
+// File bukti di Drive tidak dihapus. Sebelum menghapus, sheet BukuKas disalin ke tab "Cadangan BukuKas <waktu>".
+function keptSettingRows(events){
+ const keep=new Set(),member=new Map(),tg=new Map();let profil=-1;
+ events.forEach((a,i)=>{
+ if(!a)return;
+ if(a.type==='Divisi')keep.add(i);
+ else if(a.type==='Akses'||a.type==='Cabut'){const e=String(a.email||'').trim().toLowerCase();if(a.type==='Akses')member.set(e,i);else member.delete(e)}
+ else if(a.type==='Profil')profil=i;
+ else if(a.type==='Telegram'){if(String(a.chat||'').trim())tg.set(a.div,i);else tg.delete(a.div)}
+ });
+ for(const i of [...member.values(),...tg.values()])keep.add(i);
+ if(profil>=0)keep.add(profil);
+ return keep;
+}
+function resetTransaksi(){
+ const lock=LockService.getScriptLock();lock.waitLock(15000);
+ try{
+ const props=PropertiesService.getScriptProperties(),file=SpreadsheetApp.openById(props.getProperty('SHEET_ID')),sheet=file.getSheetByName('BukuKas');
+ const n=sheet.getLastRow()-1;if(n<1){Logger.log('BukuKas sudah kosong.');return}
+ const stamp=Utilities.formatDate(new Date(),Session.getScriptTimeZone(),'yyyy-MM-dd HH.mm.ss');
+ sheet.copyTo(file).setName('Cadangan BukuKas '+stamp);
+ if(sheet.getMaxRows()===n+1)sheet.insertRowAfter(n+1); // Sheets menolak menghapus seluruh baris yang tidak dibekukan
+ const keep=keptSettingRows(sheet.getRange(2,9,n,1).getValues().map(([ev])=>{try{return JSON.parse(ev)}catch(err){return null}}));
+ const drop=[...Array(n).keys()].map(i=>!keep.has(i));
+ // Hapus dari bawah per blok berurutan agar baris pengaturan tetap utuh dan urutannya terjaga.
+ let removed=0;
+ for(let i=n-1;i>=0;){
+ if(!drop[i]){i--;continue}
+ let j=i;while(j>0&&drop[j-1])j--;
+ sheet.deleteRows(j+2,i-j+1);removed+=i-j+1;i=j-1;
+ }
+ SpreadsheetApp.flush();
+ Logger.log('Reset selesai: '+removed+' baris dihapus, '+(n-removed)+' baris pengaturan aktif dipertahankan. Cadangan: tab "Cadangan BukuKas '+stamp+'".');
+ }finally{lock.releaseLock()}
+}
 function applyEvent(s,a){
  if(a.type==='Akses'||a.type==='Cabut'){
  const email=String(a.email||'').trim().toLowerCase();
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)throw Error('Periksa email pengurus.');
- if(a.type==='Akses'&&!s.divisions.includes(a.div))throw Error('Pilih divisi yang terdaftar.');
+ // div 'Pimpinan' = pimpinan tambahan dengan akses penuh seperti OWNER_EMAIL.
+ if(a.type==='Akses'&&a.div!=='Pimpinan'&&!s.divisions.includes(a.div))throw Error('Pilih divisi yang terdaftar.');
  s.members=s.members.filter(m=>m.email!==email);
  if(a.type==='Akses')s.members.push({email,div:a.div,name:String(a.name||'').trim().slice(0,60)});return;
  }
@@ -179,10 +218,12 @@ function doPost(e){
  const state={opening:0,divisions:[],rows:[],members:[],telegram:{},ownerName:''};
  let outbox=[];
  if(rev>0)for(const [event] of sheet.getRange(2,9,rev,1).getValues())applyEvent(state,JSON.parse(event));
- const admin=email===owner,member=state.members.find(m=>m.email===email);
+ // Pimpinan utama = OWNER_EMAIL. Pimpinan tambahan = akun dengan divisi 'Pimpinan'; aksesnya sama,
+ // kecuali mengelola akun pimpinan dan nama pimpinan utama yang hanya boleh dilakukan pimpinan utama.
+ const main=email===owner,member=state.members.find(m=>m.email===email),admin=main||!!member&&member.div==='Pimpinan';
  if(!admin&&!member)return reply(403,{error:'Email Anda belum terdaftar. Hubungi pimpinan.'});
  // Nama tampilan untuk Telegram dan aplikasi; email hanya disamarkan bila nama belum diisi.
- const displayName=()=>admin?(state.ownerName||'Pimpinan'):(member.name||maskEmail(email));
+ const displayName=()=>main?(state.ownerName||'Pimpinan'):(member.name||maskEmail(email));
  const rowOf=no=>state.rows.find(r=>r[7]===Number(no));
  if(action&&action.type==='Lihat bukti'){
  const row=rowOf(action.no);
@@ -198,6 +239,10 @@ function doPost(e){
  if(!admin&&['Pengeluaran','Pemasukan'].includes(action.type))own=action.div===member.div;
  if(!admin&&action.type==='Bukti'){const target=rowOf(action.no);own=!!target&&target[2]===member.div}
  if(!admin&&!own)return reply(403,{error:'Aksi di luar akses divisi.'});
+ if(!main){
+ const target=state.members.find(m=>m.email===String(action.email||'').trim().toLowerCase());
+ if(action.type==='Profil'||['Akses','Cabut'].includes(action.type)&&(action.div==='Pimpinan'||target&&target.div==='Pimpinan'))return reply(403,{error:'Hanya pimpinan utama yang dapat mengatur akun dan nama pimpinan.'});
+ }
  if(rev!==action.rev)return reply(409,{error:'Data berubah. Periksa saldo terbaru sebelum menyimpan kembali.'});
  const a={};for(const k of ['type','div','date','cat','note','email','chat','name'])a[k]=String(action[k]||'').trim().slice(0,k==='email'?254:k==='name'?60:120);
  if(a.type!=='Telegram')delete a.chat;
@@ -227,7 +272,7 @@ function doPost(e){
  // Notifikasi dikirim setelah kunci dilepas; kegagalan Telegram tidak membatalkan transaksi.
  if(outbox.length){if(lock.hasLock())lock.releaseLock();sendTelegram(outbox)}
  const tg=telegramConfig();
- return reply(200,admin?{role:'pimpinan',name:displayName(),state:Object.assign({},state,{telegramMain:!!(tg.token&&tg.main)}),rev}:{role:'divisi',name:displayName(),rev,state:{divisions:[member.div],rows:state.rows.filter(r=>r[2]===member.div)}});
+ return reply(200,admin?{role:'pimpinan',name:displayName(),state:Object.assign({},state,{telegramMain:!!(tg.token&&tg.main),isMain:main}),rev}:{role:'divisi',name:displayName(),rev,state:{divisions:[member.div],rows:state.rows.filter(r=>r[2]===member.div)}});
  }catch(err){return reply(503,{error:'Gagal membaca atau menyimpan kas. Muat ulang untuk melihat data terbaru.'})}
  finally{if(lock.hasLock())lock.releaseLock()}
 }

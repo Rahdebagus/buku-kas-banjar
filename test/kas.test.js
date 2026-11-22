@@ -166,6 +166,32 @@ test('Nama tampilan menggantikan email di Telegram dan aplikasi',()=>{
  add(boss,'Akses',{email:user,div:'Upacara',name:'Bli Made'});assert.equal(call(user).body.name,'Bli Made');
  sent.length=0;add(boss,'Cabut',{email:user});assert.match(sent[0].text,/dicabut[\s\S]*Bli Made/);
 });
+test('Pimpinan tambahan berakses penuh, tetapi akun pimpinan hanya diatur pimpinan utama',()=>{
+ const {context,sent,call,add}=makeScript('p'.repeat(48),{TELEGRAM_BOT_TOKEN:'123:ABC',TELEGRAM_CHAT_ID:'-1001111111111'});
+ const vice='vice@example.com',other='other@example.com',day={date:'2026-11-22'};
+ add(boss,'Divisi',{div:'Upacara'});add(boss,'Saldo awal',{amount:500000});
+ assert.equal(add(user,'Akses',{email:vice,div:'Pimpinan',name:'X'}).status,403,'pengurus tidak dapat mengangkat pimpinan');
+ assert.equal(add(boss,'Akses',{email:vice,div:'Pimpinan',name:'Wakil'}).status,200);
+ assert.match(sent.at(-1).text,/Akun pimpinan[\s\S]*Wakil → Pimpinan/);
+ let r=call(vice).body;assert.equal(r.role,'pimpinan');assert.equal(r.name,'Wakil');assert.equal(r.state.isMain,false);assert.equal(r.state.opening,500000);
+ assert.equal(call(boss).body.state.isMain,true);
+ // Akses penuh atas kas, divisi, dan pengurus
+ assert.equal(add(vice,'Alokasi',{...day,div:'Upacara',cat:'Saldo awal',amount:100000}).status,200);
+ assert.match(sent.at(-1).text,/oleh Wakil/);
+ assert.equal(add(vice,'Pemasukan',{...day,div:'Pimpinan',cat:'Punia',amount:50000}).status,200);
+ assert.equal(add(vice,'Divisi',{div:'Konsumsi'}).status,200);
+ assert.equal(add(vice,'Akses',{email:user,div:'Upacara',name:'Made'}).status,200);
+ assert.equal(add(vice,'Saldo awal',{amount:600000}).status,200);
+ assert.equal(context.summary(call(boss).body.state).center,550000);
+ // Batasan: akun pimpinan dan nama pimpinan utama
+ assert.equal(add(vice,'Akses',{email:other,div:'Pimpinan',name:'Lain'}).status,403);
+ assert.equal(add(vice,'Cabut',{email:vice}).status,403);
+ assert.equal(add(vice,'Akses',{email:vice,div:'Upacara',name:'Wakil'}).status,403,'tidak dapat memindahkan pimpinan ke divisi');
+ assert.equal(add(vice,'Profil',{name:'Ketua baru'}).status,403);
+ assert.equal(add(vice,'Cabut',{email:boss}).status,400);
+ // Pimpinan utama mencabut pimpinan tambahan
+ assert.equal(add(boss,'Cabut',{email:vice}).status,200);assert.equal(call(vice).status,403);
+});
 test('Tanpa token Telegram, transaksi tetap berjalan tanpa notifikasi',()=>{
  const {sent,add}=makeScript('u'.repeat(48));
  add(boss,'Divisi',{div:'Upacara'});
